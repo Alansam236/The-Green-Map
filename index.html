@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         #map { height: 100vh; width: 100%; }
-        body { margin:0; padding:0; }
     </style>
 </head>
 <body>
@@ -22,11 +21,27 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
     <script>
-        const map = L.map('map').setView([20.5937, 78.9629], 5); // Center India
+        const map = L.map('map').setView([20.5937, 78.9629], 5); // India
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
+
+        // Predefined city coordinates (add all cities from your dataset)
+        const cityCoordinates = {
+            "Kutch": [23.1815, 69.4705],
+            "Nashik": [19.9975, 73.7898],
+            "Srinagar": [34.0837, 74.7973],
+            "Mumbai": [19.0760, 72.8777],
+            "Chennai": [13.0827, 80.2707],
+            "Hyderabad": [17.3850, 78.4867],
+            "Bengaluru": [12.9716, 77.5946],
+            "Pune": [18.5204, 73.8567],
+            "Ahmedabad": [23.0225, 72.5714],
+            "Coimbatore": [11.0168, 76.9558],
+            "Jaipur": [26.9124, 75.7873]
+            // ... add all remaining cities
+        };
 
         function getStatusColor(status) {
             switch (status) {
@@ -52,46 +67,26 @@
                        .replace(/'/g, "&#039;");
         }
 
-        async function geocode(city, state) {
-            const query = encodeURIComponent(`${city}, ${state}, India`);
-            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${query}`;
-            try {
-                const response = await fetch(url, { headers: { 'Accept-Language': 'en' }});
-                const data = await response.json();
-                if (data.length > 0) {
-                    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-                } else {
-                    console.warn(`Geocoding failed for ${city}, ${state}`);
-                    return null;
-                }
-            } catch (error) {
-                console.error("Error in geocoding:", error);
-                return null;
-            }
-        }
-
-        document.getElementById('upload').addEventListener('change', async (e) => {
+        document.getElementById('upload').addEventListener('change', (e) => {
             const file = e.target.files[0];
             const reader = new FileReader();
 
-            reader.onload = async (evt) => {
+            reader.onload = (evt) => {
                 const data = new Uint8Array(evt.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
+                const workbook = XLSX.read(data, {type: 'array'});
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: ["City","State","Company Name","Category","Status","PoC"], range: 1});
 
-                for (const row of jsonData) {
+                jsonData.forEach(row => {
                     const city = row["City"];
-                    const state = row["State"];
                     const company = row["Company Name"];
                     const category = row["Category"];
                     const status = row["Status"];
                     const poc = row["PoC"] || "Not Assigned";
 
-                    const coords = await geocode(city, state);
-                    if (coords) {
-                        const marker = L.circleMarker(coords, {
+                    if (cityCoordinates[city]) {
+                        const marker = L.circleMarker(cityCoordinates[city], {
                             radius: 8,
                             fillColor: getStatusColor(status),
                             color: "#000",
@@ -103,12 +98,12 @@
                         marker.bindPopup(
                             `<b>${escapeHtml(company)}</b><br>` +
                             `<i>${escapeHtml(category)}</i><br>` +
-                            `${escapeHtml(city)}, ${escapeHtml(state)}<br>` +
+                            `${escapeHtml(city)}, ${escapeHtml(row["State"])}<br>` +
                             `<b>Status:</b> ${escapeHtml(status)}<br>` +
                             `<b>PoC:</b> ${escapeHtml(poc)}`
                         );
                     }
-                }
+                });
             };
 
             reader.readAsArrayBuffer(file);
