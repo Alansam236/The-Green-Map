@@ -110,26 +110,27 @@ async function loadAndPlot(){
     if(!coords) continue;
 
     const status = row.Status;
-    const category = row.Category;
-    const poc = row.PoC;
-    const company = row.Company;
+const category = row.Category;
+const poc = row.PoC;
+const company = row["Company Name"] || row.Company || "Unknown Company";
 
-    const fill = statusColors[status] || defaultStatusColor;     // Status decides color
-    const border = categoryColors[category] || defaultCategoryBorder;
+const fill = statusColors[status] || defaultStatusColor;     // Status decides color
+const border = categoryColors[category] || defaultCategoryBorder;
 
-    const marker = L.circleMarker([coords.lat, coords.lng], {
-      radius: 7, fillColor: fill, fillOpacity: 0.95,
-      color: border, weight: 1.5
-    });
-    marker.meta = {status, category};
+const marker = L.circleMarker([coords.lat, coords.lng], {
+  radius: 7, fillColor: fill, fillOpacity: 0.95,
+  color: border, weight: 1.5
+});
+marker.meta = {status, category};
 
-    marker.bindPopup(
-      `<b>${escapeHtml(company)}</b><br>` +
-      `${escapeHtml(category)}<br>` +
-      `${escapeHtml(city)}${state?(', '+escapeHtml(state)):""}<br>` +
-      `<b>Status:</b> ${escapeHtml(status)}<br>` +
-      `<b>PoC:</b> ${escapeHtml(poc)}`
-    );
+marker.bindPopup(
+  `<b>${escapeHtml(company)}</b><br>` +
+  `${escapeHtml(category)}<br>` +
+  `${escapeHtml(city)}${state?(', '+escapeHtml(state)):""}<br>` +
+  `<b>Status:</b> ${escapeHtml(status)}<br>` +
+  `<b>PoC:</b> ${escapeHtml(poc)}`
+);
+
     marker.addTo(group);
     markers.push(marker);
   }
