@@ -9,25 +9,25 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
         #map { height: 100vh; width: 100%; }
+        body { margin:0; padding:0; }
     </style>
 </head>
 <body>
+    <input type="file" id="upload" accept=".xlsx" />
     <div id="map"></div>
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <!-- Your data -->
-    <script src="data.js"></script>
-    <script>
-        // Initialize map
-        const map = L.map('map').setView([20.5937, 78.9629], 5); // Centered on India
+    <!-- SheetJS -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
-        // Add tile layer
+    <script>
+        const map = L.map('map').setView([20.5937, 78.9629], 5); // Center India
+
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
-        // Function to get color based on status
         function getStatusColor(status) {
             switch (status) {
                 case "Completed": return "green";
@@ -43,44 +43,75 @@
             }
         }
 
-        // Escape HTML to avoid injection
         function escapeHtml(text) {
             if (!text) return "";
-            return text
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+            return text.replace(/&/g, "&amp;")
+                       .replace(/</g, "&lt;")
+                       .replace(/>/g, "&gt;")
+                       .replace(/"/g, "&quot;")
+                       .replace(/'/g, "&#039;");
         }
 
-        // Add markers
-        companies.forEach(row => {
-            const company = row["Company Name"];
-            const city = row.City;
-            const category = row.Category;
-            const status = row.Status;
-            const poc = row.PoC;
-
-            // Only add if we have city coordinates
-            if (cityCoordinates[city]) {
-                const marker = L.circleMarker(cityCoordinates[city], {
-                    radius: 8,
-                    fillColor: getStatusColor(status),
-                    color: "#000",
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.8
-                }).addTo(map);
-
-                marker.bindPopup(
-                    `<b>${escapeHtml(company)}</b><br>` +
-                    `<i>${escapeHtml(category)}</i><br>` +
-                    `${escapeHtml(city)}<br>` +
-                    `<b>Status:</b> ${escapeHtml(status)}<br>` +
-                    `<b>PoC:</b> ${escapeHtml(poc)}`
-                );
+        async function geocode(city, state) {
+            const query = encodeURIComponent(`${city}, ${state}, India`);
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${query}`;
+            try {
+                const response = await fetch(url, { headers: { 'Accept-Language': 'en' }});
+                const data = await response.json();
+                if (data.length > 0) {
+                    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+                } else {
+                    console.warn(`Geocoding failed for ${city}, ${state}`);
+                    return null;
+                }
+            } catch (error) {
+                console.error("Error in geocoding:", error);
+                return null;
             }
+        }
+
+        document.getElementById('upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = async (evt) => {
+                const data = new Uint8Array(evt.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                for (const row of jsonData) {
+                    const city = row["City"];
+                    const state = row["State"];
+                    const company = row["Company Name"];
+                    const category = row["Category"];
+                    const status = row["Status"];
+                    const poc = row["PoC"] || "Not Assigned";
+
+                    const coords = await geocode(city, state);
+                    if (coords) {
+                        const marker = L.circleMarker(coords, {
+                            radius: 8,
+                            fillColor: getStatusColor(status),
+                            color: "#000",
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        }).addTo(map);
+
+                        marker.bindPopup(
+                            `<b>${escapeHtml(company)}</b><br>` +
+                            `<i>${escapeHtml(category)}</i><br>` +
+                            `${escapeHtml(city)}, ${escapeHtml(state)}<br>` +
+                            `<b>Status:</b> ${escapeHtml(status)}<br>` +
+                            `<b>PoC:</b> ${escapeHtml(poc)}`
+                        );
+                    }
+                }
+            };
+
+            reader.readAsArrayBuffer(file);
         });
     </script>
 </body>
