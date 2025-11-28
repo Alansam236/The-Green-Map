@@ -124,12 +124,12 @@ async function loadAndPlot(){
     marker.meta = {status, category};
 
     marker.bindPopup(
-      `<b>${escapeHtml(company)}</b><br>` +
-      `${escapeHtml(category)}<br>` +
-      `${escapeHtml(city)}${state?(', '+escapeHtml(state)):""}<br>` +
-      `<b>Status:</b> ${escapeHtml(status)}<br>` +
-      `<b>PoC:</b> ${escapeHtml(poc)}`
-    );
+  `<b>${escapeHtml(company)}</b><br>` +   // <-- company should be here
+  `${escapeHtml(category)}<br>` +
+  `${escapeHtml(city)}${state ? (', ' + escapeHtml(state)) : ""}<br>` +
+  `<b>Status:</b> ${escapeHtml(status)}<br>` +
+  `<b>PoC:</b> ${escapeHtml(poc)}`
+);
     marker.addTo(group);
     markers.push(marker);
   }
