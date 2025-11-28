@@ -112,7 +112,7 @@ async function loadAndPlot(){
     const status = row.Status;
     const category = row.Category;
     const poc = row.PoC;
-    const company = row.Company;
+    const company = row["Company Name"] || row.Company || "Unknown Company";
 
     const fill = statusColors[status] || defaultStatusColor;     // Status decides color
     const border = categoryColors[category] || defaultCategoryBorder;
