@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Company Map - India</title>
+    <title>India Company Map</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="initial-scale=1, maximum-scale=1">
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <style>
         #map { height: 100vh; width: 100%; }
@@ -17,32 +18,42 @@
 
     <script src="data.js"></script>
     <script>
-        const map = L.map("map").setView([22.9734, 78.6569], 5); // center of India
+        const map = L.map("map").setView([22.9734, 78.6569], 5); // Center India
 
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
             maxZoom: 19
         }).addTo(map);
 
-        function getColor(category) {
-            return {
-                "IT": "blue",
-                "Pharma": "green",
-                "Automobiles": "red",
-                "Finance": "purple"
-            }[category] || "orange"; // default if new category is added
-        }
+        // Load Excel
+        fetch("dataset.xlsx")
+            .then(r => r.arrayBuffer())
+            .then(buffer => {
+                const workbook = XLSX.read(buffer, { type: "array" });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json(sheet);
 
-        dataset.forEach(entry => {
-            L.circleMarker([entry.lat, entry.lng], {
-                radius: 8,
-                color: getColor(entry.category),
-                fillOpacity: 0.9
-            })
-            .addTo(map)
-            .bindPopup(
-                `<b>${entry.company}</b><br>${entry.category}<br>${entry.city}, ${entry.state}`
-            );
-        });
+                json.forEach(async row => {
+                    let { City, State, Category, Company, Status } = row;
+
+                    // If lat/lng missing, geocode using lookup from data.js
+                    let coords = geo_lookup[`${City}, ${State}`];
+                    if (!coords) return; // Skip if city/state not found (prevents errors)
+
+                    let markerColor = categoryColors[Category] || defaultCategoryColor;
+                    let borderColor = statusColors[Status] || defaultStatusColor;
+
+                    L.circleMarker([coords.lat, coords.lng], {
+                        radius: 9,
+                        color: borderColor,
+                        fillColor: markerColor,
+                        fillOpacity: 0.85
+                    })
+                    .addTo(map)
+                    .bindPopup(
+                        `<b>${Company}</b><br>${Category}<br>${City}, ${State}<br><u>Status:</u> ${Status}`
+                    );
+                });
+            });
     </script>
 </body>
 </html>
