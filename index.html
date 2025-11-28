@@ -117,9 +117,13 @@ async function loadAndPlot(){
     const fill = statusColors[status] || defaultStatusColor;     // Status decides color
     const border = categoryColors[category] || defaultCategoryBorder;
 
+   
     const marker = L.circleMarker([coords.lat, coords.lng], {
-      radius: 7, fillColor: fill, fillOpacity: 0.95,
-      color: border, weight: 1.5
+      radius: 7,
+      fillColor: fill,
+      fillOpacity: 0.95,
+      stroke: false 
+
     });
     marker.meta = {status, category};
 
