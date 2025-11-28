@@ -1,71 +1,165 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Company Map</title>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>India Company Map</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body,html { margin:0; height:100%; }
+    #map { height:100%; width:100%; }
+    .controls {
+      position:absolute; top:10px; left:10px; z-index:1000;
+      background:#fff; padding:12px; border-radius:6px;
+      box-shadow:0 2px 6px rgba(0,0,0,.3); width:320px;
+      font-size:13px; max-height:90vh; overflow:auto;
+    }
+    .legend .row { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+    .dot { width:14px; height:14px; border-radius:50%; display:inline-block; }
+  </style>
 </head>
 <body>
-  <div id="map" style="height: 100vh;"></div>
-  <script>
-    // Escape HTML function to avoid injection
-    function escapeHtml(text) {
-      return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+
+<div id="map"></div>
+
+<div class="controls">
+  <label>Status: <select id="filterStatus"><option value="__all__">All</option></select></label>
+  <label>Category: <select id="filterCategory"><option value="__all__">All</option></select></label>
+  <button id="resetBtn">Reset</button>
+  <div id="counts" style="margin-top:8px;"></div>
+  <div id="legend" class="legend" style="margin-top:8px;"><b>Status Legend</b></div>
+</div>
+
+<script src="data.js"></script>
+
+<script>
+const map = L.map("map").setView([22.9734, 78.6569], 5);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+function escapeHtml(s){ return String(s||"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function loadAndPlot(){
+  const resp = await fetch("dataset.xlsx");
+  const buf = await resp.arrayBuffer();
+  const wb = XLSX.read(buf, {type:"array"});
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:""});
+
+  const categories = Array.from(new Set(rows.map(r=>r.Category).filter(Boolean))).sort();
+  const categoryColors = generateCategoryColors(categories);
+
+  const statuses = Array.from(new Set(rows.map(r=>r.Status).filter(Boolean))).sort();
+  const statusSel = document.getElementById("filterStatus");
+  const catSel = document.getElementById("filterCategory");
+
+  statuses.forEach(s => {
+    const o = document.createElement("option");
+    o.value = s; o.textContent = s;
+    statusSel.appendChild(o);
+  });
+
+  categories.forEach(c => {
+    const o = document.createElement("option");
+    o.value = c; o.textContent = c;
+    catSel.appendChild(o);
+  });
+
+  const legend = document.getElementById("legend");
+  statuses.forEach(st => {
+    const r = document.createElement("div"); r.className="row";
+    const d = document.createElement("span"); d.className="dot";
+    d.style.background = statusColors[st] || defaultStatusColor;
+    r.appendChild(d);
+    r.appendChild(document.createTextNode(st));
+    legend.appendChild(r);
+  });
+
+  const group = L.layerGroup().addTo(map);
+  const markers = [];
+
+  for (const row of rows){
+    const city = row.City.trim();
+    const state = row.State.trim();
+    if(!city) continue;
+    const key = (city + (state?(", "+state):", India")).toLowerCase();
+
+    let coords = null;
+    if (geo_lookup[key]) coords = geo_lookup[key];
+
+    if(!coords){
+      try {
+        const cached = localStorage.getItem("geo:"+key);
+        if(cached) coords = JSON.parse(cached);
+      } catch {}
     }
 
-    // Example CSV/JSON data
-    const data = [
-      {City: "Hyderabad", State: "Telangana", Company: "TMT Rebars", Category: "TMT Rebars", Status: "Intro Session Pending", PoC: "Neha", Latitude: 17.385044, Longitude: 78.486671},
-      {City: "Mumbai", State: "Maharashtra", Company: "GreenTech", Category: "Furniture", Status: "Completed", PoC: "Amit", Latitude: 19.0760, Longitude: 72.8777},
-      // add all your rows here
-    ];
+    if(!coords){
+      const query = encodeURIComponent(city + (state?(", "+state):", India"));
+      const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`;
+      const r = await fetch(url);
+      const j = await r.json();
+      if(j.length>0){
+        coords = {lat:+j[0].lat, lng:+j[0].lon};
+        localStorage.setItem("geo:"+key, JSON.stringify(coords));
+      }
+      await sleep(1100);
+    }
+    if(!coords) continue;
 
-    // Status-based color coding
-    const statusColors = {
-      "Completed": "green",
-      "Working on Documentation": "orange",
-      "Inactive": "red",
-      "Hold": "grey",
-      "Intro Session Pending": "blue",
-      "To be updated": "purple",
-      "Data Received": "cyan",
-      "Certification Payment Pending": "pink"
-    };
+    const status = row.Status;
+    const category = row.Category;
+    const poc = row.PoC;
+    const company = row.Company;
 
-    // Initialize map
-    const map = L.map('map').setView([20.5937, 78.9629], 5); // center on India
+    const fill = statusColors[status] || defaultStatusColor;     // Status decides color
+    const border = categoryColors[category] || defaultCategoryBorder;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
-
-    // Add markers
-    data.forEach(row => {
-      const status = row.Status || "Unknown";
-      const color = statusColors[status] || "black";
-
-      const marker = L.circleMarker([row.Latitude, row.Longitude], {
-        color: color,
-        radius: 8,
-        fillOpacity: 0.8
-      }).addTo(map);
-
-      marker.bindPopup(
-        `<b>${escapeHtml(row.Company)}</b><br>` +
-        `${escapeHtml(row.Category)}<br>` +
-        `${escapeHtml(row.City)}, ${escapeHtml(row.State)}<br>` +
-        `<b>Status:</b> ${escapeHtml(row.Status)}<br>` +
-        `<b>PoC:</b> ${escapeHtml(row.PoC)}`
-      );
+    const marker = L.circleMarker([coords.lat, coords.lng], {
+      radius: 7, fillColor: fill, fillOpacity: 0.95,
+      color: border, weight: 1.5
     });
-  </script>
+    marker.meta = {status, category};
+
+    marker.bindPopup(
+      `<b>${escapeHtml(company)}</b><br>` +
+      `${escapeHtml(category)}<br>` +
+      `${escapeHtml(city)}${state?(', '+escapeHtml(state)):""}<br>` +
+      `<b>Status:</b> ${escapeHtml(status)}<br>` +
+      `<b>PoC:</b> ${escapeHtml(poc)}`
+    );
+    marker.addTo(group);
+    markers.push(marker);
+  }
+
+  const counts = document.getElementById("counts");
+  function applyFilters(){
+    const sVal = statusSel.value;
+    const cVal = catSel.value;
+    let count=0;
+    markers.forEach(m=>{
+      const ok = (sVal==="__all__" || m.meta.status===sVal) &&
+                 (cVal==="__all__" || m.meta.category===cVal);
+      if(ok) { if(!map.hasLayer(m)) m.addTo(group); count++; }
+      else { if(map.hasLayer(m)) group.removeLayer(m); }
+    });
+    counts.innerHTML = `Total plotted: <b>${markers.length}</b> — showing <b>${count}</b>`;
+  }
+
+  statusSel.onchange = applyFilters;
+  catSel.onchange = applyFilters;
+  document.getElementById("resetBtn").onclick = () => {
+    map.setView([22.9734, 78.6569], 5);
+    statusSel.value = "__all__";
+    catSel.value = "__all__";
+    applyFilters();
+  };
+  applyFilters();
+}
+
+loadAndPlot();
+</script>
 </body>
 </html>
