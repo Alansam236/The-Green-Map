@@ -1,113 +1,183 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Company Map</title>
+    <title>India Company Map</title>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        #map { height: 100vh; width: 100%; }
+        body, html { height: 100%; margin: 0; }
+        #map { height: 100%; width: 100%; }
+        .controls { position: absolute; top: 10px; left: 10px; z-index: 1000; background: rgba(255,255,255,0.96); padding: 10px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); max-height: 90vh; overflow:auto; width: 320px; }
+        .legend { margin-top:8px; font-size:12px; }
+        .legend .item { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+        .dot { width:14px; height:14px; border-radius:7px; display:inline-block; border:1px solid #666; }
+        label { display:inline-block; margin-right:8px; font-size:13px; }
+        select { margin-right:8px; }
     </style>
 </head>
 <body>
-    <input type="file" id="upload" accept=".xlsx" />
     <div id="map"></div>
 
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <!-- SheetJS -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <div class="controls" id="controls">
+        <div style="margin-bottom:8px;">
+            <label>Category:
+                <select id="filterCategory"><option value="__all__">All</option></select>
+            </label>
+            <label>Status:
+                <select id="filterStatus"><option value="__all__">All</option></select>
+            </label>
+            <button id="resetBtn">Reset view</button>
+        </div>
+        <div id="counts" style="font-size:13px;margin-bottom:8px;"></div>
+        <div class="legend" id="legend"><strong>Legend</strong></div>
+    </div>
+
+    <script src="data.js"></script>
 
     <script>
-        const map = L.map('map').setView([20.5937, 78.9629], 5); // India
+    // map init
+    const map = L.map('map').setView([22.9734, 78.6569], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
+    // small sleep util
+    function sleep(ms){ return new Promise(res=>setTimeout(res, ms)); }
 
-        // Predefined city coordinates (add all cities from your dataset)
-        const cityCoordinates = {
-            "Kutch": [23.1815, 69.4705],
-            "Nashik": [19.9975, 73.7898],
-            "Srinagar": [34.0837, 74.7973],
-            "Mumbai": [19.0760, 72.8777],
-            "Chennai": [13.0827, 80.2707],
-            "Hyderabad": [17.3850, 78.4867],
-            "Bengaluru": [12.9716, 77.5946],
-            "Pune": [18.5204, 73.8567],
-            "Ahmedabad": [23.0225, 72.5714],
-            "Coimbatore": [11.0168, 76.9558],
-            "Jaipur": [26.9124, 75.7873]
-            // ... add all remaining cities
-        };
+    // load workbook and plot
+    async function loadAndPlot(){
+        // fetch xlsx
+        const resp = await fetch('dataset.xlsx');
+        const buf = await resp.arrayBuffer();
+        const wb = XLSX.read(buf, {type:'array'});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
-        function getStatusColor(status) {
-            switch (status) {
-                case "Completed": return "green";
-                case "Working on Documentation": return "orange";
-                case "Hold": return "red";
-                case "Intro Session Pending": return "purple";
-                case "Inactive": return "gray";
-                case "To be updated": return "blue";
-                case "Data Received": return "cyan";
-                case "Certification Payment Pending": return "brown";
-                case "Waiting for CTO, on-hold": return "darkred";
-                default: return "black";
-            }
-        }
+        // create category colors at runtime
+        const cats = Array.from(new Set(rows.map(r=>r.Category||'').filter(Boolean))).sort();
+        const categoryColors = generateCategoryColors(cats);
 
-        function escapeHtml(text) {
-            if (!text) return "";
-            return text.replace(/&/g, "&amp;")
-                       .replace(/</g, "&lt;")
-                       .replace(/>/g, "&gt;")
-                       .replace(/"/g, "&quot;")
-                       .replace(/'/g, "&#039;");
-        }
+        // statusColors is provided by data.js
+        const defaultCategoryColor = (typeof window.defaultCategoryColor !== 'undefined') ? window.defaultCategoryColor : '#ff9900';
+        const defaultStatusColor = (typeof window.defaultStatusColor !== 'undefined') ? window.defaultStatusColor : '#000000';
 
-        document.getElementById('upload').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            const reader = new FileReader();
+        // fill controls
+        const catSel = document.getElementById('filterCategory');
+        const statSel = document.getElementById('filterStatus');
+        cats.forEach(c=>{ let o=document.createElement('option'); o.value=c; o.textContent=c; catSel.appendChild(o); });
+        const stats = Array.from(new Set(rows.map(r=>r.Status||'').filter(Boolean))).sort();
+        stats.forEach(s=>{ let o=document.createElement('option'); o.value=s; o.textContent=s; statSel.appendChild(o); });
 
-            reader.onload = (evt) => {
-                const data = new Uint8Array(evt.target.result);
-                const workbook = XLSX.read(data, {type: 'array'});
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: ["City","State","Company Name","Category","Status","PoC"], range: 1});
-
-                jsonData.forEach(row => {
-                    const city = row["City"];
-                    const company = row["Company Name"];
-                    const category = row["Category"];
-                    const status = row["Status"];
-                    const poc = row["PoC"] || "Not Assigned";
-
-                    if (cityCoordinates[city]) {
-                        const marker = L.circleMarker(cityCoordinates[city], {
-                            radius: 8,
-                            fillColor: getStatusColor(status),
-                            color: "#000",
-                            weight: 1,
-                            opacity: 1,
-                            fillOpacity: 0.8
-                        }).addTo(map);
-
-                        marker.bindPopup(
-                            `<b>${escapeHtml(company)}</b><br>` +
-                            `<i>${escapeHtml(category)}</i><br>` +
-                            `${escapeHtml(city)}, ${escapeHtml(row["State"])}<br>` +
-                            `<b>Status:</b> ${escapeHtml(status)}<br>` +
-                            `<b>PoC:</b> ${escapeHtml(poc)}`
-                        );
-                    }
-                });
-            };
-
-            reader.readAsArrayBuffer(file);
+        // legend
+        const legend = document.getElementById('legend');
+        legend.innerHTML = '<strong>Legend</strong><br/>' + '<div style="font-size:12px;margin-top:6px">Categories (up to 50 shown)</div>';
+        cats.slice(0,50).forEach(cat=>{
+            const div = document.createElement('div'); div.className='item';
+            const dot = document.createElement('span'); dot.className='dot'; dot.style.background = categoryColors[cat] || defaultCategoryColor;
+            dot.style.borderColor = '#444';
+            div.appendChild(dot);
+            div.appendChild(document.createTextNode(cat));
+            legend.appendChild(div);
         });
+
+        // markers list for filtering
+        const markers = [];
+        const group = L.layerGroup().addTo(map);
+
+        // sequential geocode to respect Nominatim limits
+        for(let i=0;i<rows.length;i++){
+            const row = rows[i];
+            const city = (row.City||'').toString().trim();
+            const state = (row.State||'').toString().trim();
+            const company = (row.Company||row['Company Name']||'').toString();
+            const category = row.Category || '';
+            const status = row.Status || '';
+
+            if(!city) continue;
+            const key = (city + (state?(', '+state):', India')).toLowerCase();
+
+            // try local geo_lookup from data.js first
+            let coords = null;
+            if(typeof geo_lookup !== 'undefined' && geo_lookup && geo_lookup[key]) coords = geo_lookup[key];
+
+            // try localStorage cache
+            if(!coords){
+                try{
+                    const cached = localStorage.getItem('geo:'+key);
+                    if(cached) coords = JSON.parse(cached);
+                }catch(e){}
+            }
+
+            // else call Nominatim
+            if(!coords){
+                const q = encodeURIComponent(city + (state?(', '+state+', India') : ', India'));
+                const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&addressdetails=1`;
+                try{
+                    const r = await fetch(url, { headers: { 'User-Agent': 'GreenPro-Map/1.0 (email@example.com)' } });
+                    const j = await r.json();
+                    if(j && j.length>0){
+                        coords = { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) };
+                        localStorage.setItem('geo:'+key, JSON.stringify(coords));
+                    } else {
+                        console.warn('No geocode for', city, state);
+                    }
+                }catch(e){
+                    console.warn('Geocode error', e);
+                }
+                // avoid hammering the API — wait ~1100ms between requests
+                await sleep(1100);
+            }
+
+            if(!coords) continue;
+
+            const fillColor = categoryColors[category] || defaultCategoryColor;
+            const borderColor = (statusColors && statusColors[status]) ? statusColors[status] : defaultStatusColor;
+
+            const marker = L.circleMarker([coords.lat, coords.lng], {
+                radius: 7,
+                fillColor: fillColor,
+                color: borderColor,
+                weight: 1.5,
+                fillOpacity: 0.95
+            });
+
+            marker.bindPopup(`<b>${escapeHtml(company)}</b><br>${escapeHtml(category)}<br>${escapeHtml(city)}${state?(', '+escapeHtml(state)) : ''}<br/><b>Status:</b> ${escapeHtml(status)}`);
+            marker.meta = { category, status, company, city };
+            marker.addTo(group);
+            markers.push(marker);
+        }
+
+        window.__markers = markers; // global for filtering
+
+        // counts
+        const countsDiv = document.getElementById('counts');
+        countsDiv.innerHTML = `Total plotted: <b>${markers.length}</b>`;
+
+        // filtering
+        function applyFilters(){
+            const cat = catSel.value;
+            const stat = statSel.value;
+            let shown = 0;
+            markers.forEach(m=>{
+                const ok = (cat==='__all__' || m.meta.category===cat) && (stat==='__all__' || m.meta.status===stat);
+                if(ok) { if(!map.hasLayer(m)) m.addTo(group); shown++; } else { if(map.hasLayer(m)) group.removeLayer(m); }
+            });
+            countsDiv.innerHTML = `Total plotted: <b>${markers.length}</b> — showing: <b>${shown}</b>`;
+        }
+
+        catSel.addEventListener('change', applyFilters);
+        statSel.addEventListener('change', applyFilters);
+        document.getElementById('resetBtn').addEventListener('click', ()=>{ map.setView([22.9734,78.6569],5); catSel.value='__all__'; statSel.value='__all__'; applyFilters(); });
+
+        applyFilters();
+    }
+
+    // small helpers
+    function escapeHtml(s){ return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    // call loader
+    loadAndPlot();
     </script>
 </body>
 </html>
