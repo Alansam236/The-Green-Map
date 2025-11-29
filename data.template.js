@@ -3,7 +3,6 @@
    GitHub Actions will append:  const DATA_ROWS = [ ... ];
 */
 
-// Fill colors by STATUS (your scheme)
 const statusColors = {
   "Completed": "#1fa83b",
   "Documentation": "#007bff",
@@ -18,11 +17,8 @@ const statusColors = {
 
 const defaultStatusColor = "#607d8b";   // fallback
 
-// Optional: cached coordinates to reduce geocoding calls
+// Optional: cached coordinates
 const geo_lookup = {
   // "hyderabad, telangana": { lat: 17.3850, lng: 78.4867 },
   // "mumbai, maharashtra":  { lat: 19.0760, lng: 72.8777 }
 };
-
-// NOTE: Do not add DATA_ROWS here. The workflow will generate docs/data.js
-// by appending:  const DATA_ROWS = [ ...rows from dataset.xlsx... ];
