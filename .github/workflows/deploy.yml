@@ -32,23 +32,37 @@ jobs:
         run: |
           node - <<'EOF'
           const fs = require('fs');
-          const XLSX = require('xlsx');
+          try {
+            // Verify files exist
+            if (!fs.existsSync('dataset.xlsx')) {
+              throw new Error('dataset.xlsx not found at repo root');
+            }
+            if (!fs.existsSync('data.template.js')) {
+              throw new Error('data.template.js not found at repo root');
+            }
 
-          // Ensure docs folder exists
-          if (!fs.existsSync('docs')) fs.mkdirSync('docs');
+            const XLSX = require('xlsx');
+            const wb = XLSX.readFile('dataset.xlsx');
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            if (!ws) throw new Error('First sheet not found in dataset.xlsx');
 
-          // Read Excel from repo root (NOT served by Pages)
-          const wb = XLSX.readFile('dataset.xlsx');
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+            console.log('Rows read:', rows.length);
 
-          // Read template (colors + geo cache)
-          const template = fs.readFileSync('data.template.js', 'utf8');
+            const template = fs.readFileSync('data.template.js', 'utf8');
 
-          // Append DATA_ROWS to produce docs/data.js
-          const out = template + '\n\nconst DATA_ROWS = ' + JSON.stringify(rows, null, 2) + ';\n';
-          fs.writeFileSync('docs/data.js', out, 'utf8');
-          console.log('Built docs/data.js with', rows.length, 'rows');
+            // Append DATA_ROWS
+            const out = template + '\n\nconst DATA_ROWS = ' + JSON.stringify(rows, null, 2) + ';\n';
+
+            // Ensure docs exists
+            if (!fs.existsSync('docs')) fs.mkdirSync('docs');
+
+            fs.writeFileSync('docs/data.js', out, 'utf8');
+            console.log('Wrote docs/data.js');
+          } catch (err) {
+            console.error('ERROR building docs/data.js:', err.message);
+            process.exit(1);
+          }
           EOF
 
       - name: Commit docs/data.js
