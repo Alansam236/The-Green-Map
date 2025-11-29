@@ -1,37 +1,30 @@
-// data.js
 
-// Fill colors by STATUS
-const statusColors = {
-  "Completed": "#1fa83b",
-  "Documentation": "#007bff",
-  "Registered": "#8e44ad",
-  "Site audit done": "#f39c12",
-  "Inactive": "#a0a0a0",
-  "Hold": "#e67e22",
-  "To be updated": "#d35400",
-  "Certification Payment Pending": "#c0392b",
-  "Data Received": "#16a085",
-  // add new statuses freely — they will auto-appear in legend
-};
-
-const defaultStatusColor = "#607d8b";   // fallback
-const defaultCategoryBorder = "#000000"; // if category undefined
-
-// (optional) category → border color (so that category info is still visible)
-// generates distinct colors automatically
-function generateCategoryColors(categories) {
-  const uniq = Array.from(new Set(categories.filter(Boolean))).sort();
-  const n = uniq.length || 1;
-  const result = {};
-  for (let i = 0; i < uniq.length; i++) {
-    const hue = Math.round((i / n) * 360);
-    const sat = 65, light = 45;
-    result[uniq[i]] = `hsl(${hue}, ${sat}%, ${light}%)`;
-  }
-  return result;
-}
-
-// optional cached coordinates for performance
+// TEMP ONLY — will be overwritten by deploy.yml once it runs
+const statusColors = { "Completed": "#1fa83b", "Inactive": "#a0a0a0" };
+const defaultStatusColor = "#607d8b";
 const geo_lookup = {
-  // "Mumbai, Maharashtra": { lat: 19.0760, lng: 72.8777 },
+  "hyderabad, telangana": { lat: 17.3850, lng: 78.4867 },
+  "mumbai, maharashtra":  { lat: 19.0760, lng: 72.8777 }
 };
+const DATA_ROWS = [
+  {
+    "City": "Hyderabad",
+    "State": "Telangana",
+    "Company Name": "Sugna Metals Ltd",
+    "Category": "TMT Rebars",
+    "Status": "Completed",
+    "Year of Certification": "2023",
+    "PoC": "Alan",
+    "GP Team2": "Metals"
+  },
+  {
+    "City": "Mumbai",
+    "State": "Maharashtra",
+    "Company Name": "Godrej Security Solutions",
+    "Category": "Ready Mix Concrete",
+    "Status": "Inactive",
+    "Year of Certification": "2022",
+    "PoC": "PKS",
+    "GP Team2": "Concrete"
+  }
+];
