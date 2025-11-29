@@ -1,8 +1,7 @@
-
 // data.template.js
-// Reusable configuration & small fallbacks for index.html
+// Reusable configuration for index.html
 
-// 1) Status color palette (edit freely)
+// 1) Status color palette
 const STATUS_COLORS = {
   'Completed': '#2e7d32',
   'Working on Documentation': '#1e88e5',
@@ -16,11 +15,10 @@ const STATUS_COLORS = {
   'Unknown': '#9e9e9e'
 };
 
-// 2) Optional GeoJSON sources (swap if you maintain your own copy)
-// The default points at a public repo that hosts India state boundaries.
+// 2) GeoJSON source for India states (used for choropleth)
 const GEO_SOURCES = {
   INDIA_STATES_GEOJSON_URL: 'https://raw.githubusercontent.com/india-in-data/india_maps/master/india_state_ut_administered.geojson'
-  // Alternative sources also exist (e.g., Data{Meet} projects). Keep just one active URL.
+  // Alternative: Data{Meet} projects also host India boundaries.
   // https://projects.datameet.org/maps/
 };
 
@@ -37,6 +35,6 @@ const CITY_COORDS = {
   "Jaipur": [26.9124, 75.7873, "Rajasthan"],
   "Kolkata": [22.5726, 88.3639, "West Bengal"],
   "Nashik": [20.0113, 73.7908, "Maharashtra"],
-  "Coimbatore": [11.0168, 76.9558, "Tamil Nadu"],
-  // Add more if needed, especially rare cities not present in /assets/in-cities.json
-
+  "Coimbatore": [11.0168, 76.9558, "Tamil Nadu"]
+  // Add rare cities as needed
+};
