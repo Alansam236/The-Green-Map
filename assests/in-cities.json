@@ -1,0 +1,5 @@
+[
+  { "city": "Hyderabad", "lat": 17.3850, "lng": 78.4867, "admin_name": "Telangana" },
+  { "city": "Bengaluru", "lat": 12.9716, "lng": 77.5946, "admin_name": "Karnataka" },
+  { "city": "Chennai", "lat": 13.0827, "lng": 80.2707, "admin_name": "Tamil Nadu" }
+]
