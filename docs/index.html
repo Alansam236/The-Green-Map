@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -11,11 +12,11 @@
                  style-src 'self';
                  script-src 'self';
                  img-src * data:;
-                 connect-src https://nominatim.openstreetmap.org https://{s}.tile.openstreetmap.org https://tile.openstreetmap.org;
+                 connect-src https://nominatim.openstreetmap.org https://*.tile.openstreetmap.org https://tile.openstreetmap.org;
                  font-src 'self';">
 
-  <!-- Local Leaflet (no CDN) -->
-  assets/leaflet/leaflet.css
+  <!-- Local Leaflet (correct HTML tags!) -->
+  <link rel="let/leaflet.css
   assets/leaflet/leaflet.js</script>
 
   <style>
@@ -35,11 +36,13 @@
     .badge { margin-left:auto; background:#eef3ff; color:#1f3b99; border:1px solid #cdd6ff; border-radius:10px; padding:2px 8px; font-size:12px; min-width:24px; text-align:center; }
     #counts { margin-top:8px; }
     #resetBtn { margin-top:4px; }
+    #diag { position:absolute; top:0; right:0; background:#fff3cd; color:#856404; padding:8px 12px; border-left:1px solid #ffeeba; border-bottom:1px solid #ffeeba; font-size:12px; }
   </style>
 </head>
 <body>
 
 <div id="map"></div>
+<div id="diag" style="display:none;"></div>
 
 <div class="controls">
   <!-- Search boxes -->
@@ -64,26 +67,61 @@
   </div>
 </div>
 
-<!-- Built by GitHub Actions -->
+<!-- Load your data (must be a real <script> tag, not plain text) -->
 data.js</script>
 
 <script>
+/* ---------- Diagnostics ---------- */
+function showDiag(msg){
+  const el = document.getElementById('diag');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+if (!window.L) {
+  showDiag('Leaflet failed to load. Check that /docs/assets/leaflet/leaflet.js and leaflet.css exist and the <link>/<script> tags are present.');
+}
+
+/* ---------- Map ---------- */
 const initialCenter = [22.9734, 78.6569];
 const initialZoom   = 5;
 
-const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: '&copy; OpenStreetMap contributors'
-});
-const map = L.map("map", { center: initialCenter, zoom: initialZoom, layers: [osm] });
+let mapLayer;
+try {
+  mapLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  });
+} catch (e) {
+  showDiag('Leaflet tile layer creation failed.');
+}
 
+let map;
+try {
+  map = L.map("map", { center: initialCenter, zoom: initialZoom, layers: [mapLayer] });
+} catch (e) {
+  showDiag('Leaflet map failed to initialize.');
+}
+
+/* ---------- Utilities ---------- */
 function sleep(ms){ return new Promise(r => setTimeout(r,ms)); }
-function escapeHtml(s){ return String(s||"").replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function uniqueSorted(values){ return Array.from(new Set(values.filter(v=>v!==""&&v!==null&&v!==undefined))).map(v=>String(v)).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:"base"})); }
+function escapeHtml(s){
+  return String(s||"").replace(/[&<>\"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+  ));
+}
+function uniqueSorted(values){
+  return Array.from(new Set(values.filter(v => v !== "" && v !== null && v !== undefined)))
+              .map(v => String(v))
+              .sort((a,b)=> a.localeCompare(b, undefined, {sensitivity: "base"}));
+}
 function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 const get = (row, names) => { for (const n of names) if (n in row) return row[n]; return ""; };
 
-(async function(){
+/* ---------- Main ---------- */
+(function(){
+  if (!Array.isArray(window.DATA_ROWS) || window.DATA_ROWS.length === 0){
+    showDiag('No data found: docs/data.js is missing or DATA_ROWS is empty.');
+  }
   const rows = Array.isArray(window.DATA_ROWS) ? window.DATA_ROWS : [];
 
   const allCities    = uniqueSorted(rows.map(r => get(r, ["City"])));
@@ -118,10 +156,11 @@ const get = (row, names) => { for (const n of names) if (n in row) return row[n]
 
   const legend = document.getElementById("legend");
   const legendMap = {};
-  allStatuses.forEach(st => {
+  (allStatuses.length ? allStatuses : ["(no status)"]).forEach(st => {
     const r = document.createElement("div"); r.className="row";
     const d = document.createElement("span"); d.className="dot";
-    d.style.background = (typeof statusColors!=="undefined" && statusColors[st]) ? statusColors[st] : (typeof defaultStatusColor!=="undefined" ? defaultStatusColor : "#607d8b");
+    const color = (typeof statusColors!=="undefined" && statusColors[st]) ? statusColors[st] : (typeof defaultStatusColor!=="undefined" ? defaultStatusColor : "#607d8b");
+    d.style.background = color;
     const label = document.createTextNode(st);
     const countSpan = document.createElement("span"); countSpan.className="badge"; countSpan.textContent = "0";
     r.appendChild(d); r.appendChild(label); r.appendChild(countSpan); legend.appendChild(r);
@@ -140,7 +179,6 @@ const get = (row, names) => { for (const n of names) if (n in row) return row[n]
     const year     = get(r, ["Year of Certification","Year","Certification Year"]).toString().trim();
     const poc      = get(r, ["PoC","POC"]).trim();
     const gp       = get(r, ["GP Team2","GreenPro Vertical","GP Team","Vertical"]).trim();
-
     if (!city) continue;
 
     const key = (city + (state ? (", " + state) : ", India")).toLowerCase();
