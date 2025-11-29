@@ -5,16 +5,11 @@
   <title>India Company Map</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="initial-scale=1, maximum-scale=1">
- 
-<!-- Leaflet CSS -->
-<link
- /unpkg.com/leaflet@1.9.4/dist/leaflet.css
 
-<!-- Leaflet JS -->
-https://unpkg.com/leaflet@1.9.4/dist/leaflet.js</script>
-
-<!-- SheetJS (XLSX) -->
-<script/cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js</script>
+  <!-- Leaflet & XLSX (separate, correct URLs) -->
+  https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
+  https://unpkg.com/leaflet@1.9.4/dist/leaflet.js</script>
+  https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js</script>
 
   <style>
     body,html { margin:0; height:100%; }
@@ -30,12 +25,7 @@ https://unpkg.com/leaflet@1.9.4/dist/leaflet.js</script>
     .controls .row select, .controls .row input { flex:1; }
     .legend .row { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
     .dot { width:14px; height:14px; border-radius:50%; display:inline-block; border:1px solid #3332; }
-    .badge {
-      margin-left:auto;
-      background:#eef3ff; color:#1f3b99;
-      border:1px solid #cdd6ff; border-radius:10px;
-      padding:2px 8px; font-size:12px; min-width:24px; text-align:center;
-    }
+    .badge { margin-left:auto; background:#eef3ff; color:#1f3b99; border:1px solid #cdd6ff; border-radius:10px; padding:2px 8px; font-size:12px; min-width:24px; text-align:center; }
     #counts { margin-top:8px; }
     #resetBtn { margin-top:4px; }
   </style>
@@ -67,8 +57,8 @@ https://unpkg.com/leaflet@1.9.4/dist/leaflet.js</script>
   </div>
 </div>
 
-<!-- Your statusColors, defaultStatusColor, and geo_lookup (optional) -->
-<script</script>
+<!-- Your statusColors / defaultStatusColor / geo_lookup -->
+data.js</script>
 
 <script>
 /* ---------- Map & Basemaps ---------- */
@@ -91,14 +81,14 @@ const esriImagery = L.tileLayer(
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   { attribution: 'Tiles &copy; Esri & the GIS User Community' }
 );
+
 const map = L.map("map", { center: initialCenter, zoom: initialZoom, layers: [osm] });
-const baseLayers = {
+L.control.layers({
   "OpenStreetMap": osm,
   "Light (CartoDB Positron)": cartoPositron,
   "Topographic (OpenTopoMap)": openTopo,
   "Satellite (Esri World Imagery)": esriImagery
-};
-L.control.layers(baseLayers, null, { position: "topright" }).addTo(map);
+}, null, { position: "topright" }).addTo(map);
 
 /* ---------- Utilities ---------- */
 function sleep(ms){ return new Promise(r => setTimeout(r,ms)); }
@@ -119,8 +109,8 @@ function debounce(fn, ms){
 
 /* ---------- Main ---------- */
 async function loadAndPlot(){
-  // Load workbook
-  const resp = await fetch("dataset.xlsx"); // change if your file name differs
+  // Load workbook (must be accessible at the same path on GitHub Pages)
+  const resp = await fetch("dataset.xlsx");
   const buf  = await resp.arrayBuffer();
   const wb   = XLSX.read(buf, {type:"array"});
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:""});
@@ -169,20 +159,20 @@ async function loadAndPlot(){
   addOptions(pocSel,     allPoCs);
   addOptions(gpSel,      allGPs);
 
-  // Build Status legend from statusColors (provided by data.js) WITH COUNT BADGES
+  // Build Status legend from your statusColors WITH COUNT BADGES
   const legend = document.getElementById("legend");
-  const legendMap = {}; // status => {row, countSpan}
+  const legendMap = {}; // status => {countSpan}
   allStatuses.forEach(st => {
     const r = document.createElement("div"); r.className="row";
     const d = document.createElement("span"); d.className="dot";
-    d.style.background = (typeof statusColors !== "undefined" && statusColors[st]) ? statusColors[st] : (typeof defaultStatusColor !== "undefined" ? defaultStatusColor : "#2e7d32");
+    d.style.background = (typeof statusColors !== "undefined" && statusColors[st]) ? statusColors[st] : (typeof defaultStatusColor !== "undefined" ? defaultStatusColor : "#607d8b");
     const label = document.createTextNode(st);
     const countSpan = document.createElement("span"); countSpan.className="badge"; countSpan.textContent = "0";
     r.appendChild(d);
     r.appendChild(label);
     r.appendChild(countSpan);
     legend.appendChild(r);
-    legendMap[st] = { row: r, count: countSpan };
+    legendMap[st] = { count: countSpan };
   });
 
   // Plot markers
@@ -231,7 +221,7 @@ async function loadAndPlot(){
     }
     if (!coords) continue;
 
-    const fill = (typeof statusColors !== "undefined" && statusColors[status]) ? statusColors[status] : (typeof defaultStatusColor !== "undefined" ? defaultStatusColor : "#2e7d32");
+    const fill = (typeof statusColors !== "undefined" && statusColors[status]) ? statusColors[status] : (typeof defaultStatusColor !== "undefined" ? defaultStatusColor : "#607d8b");
 
     const marker = L.circleMarker([coords.lat, coords.lng], {
       radius: 7,
@@ -269,11 +259,11 @@ async function loadAndPlot(){
     const pVal  = pocSel.value;
     const gVal  = gpSel.value;
 
-    const searchCity   = searchCityInput.value.trim().toLowerCase();
-    const searchCompany= searchCompanyInput.value.trim().toLowerCase();
+    const searchCity    = searchCityInput.value.trim().toLowerCase();
+    const searchCompany = searchCompanyInput.value.trim().toLowerCase();
 
     let shown = 0;
-    const statusCounts = {}; // accumulate visible counts per status
+    const statusCounts = {}; // visible counts per status
 
     markers.forEach(m => {
       const matchesDropdown =
@@ -302,7 +292,7 @@ async function loadAndPlot(){
       }
     });
 
-    // Update global counts text
+    // Update counts text
     counts.innerHTML = `Total plotted: <b>${markers.length}</b> — showing <b>${shown}</b>`;
 
     // Update legend badges
@@ -315,7 +305,6 @@ async function loadAndPlot(){
   [statusSel, catSel, citySel, stateSel, compSel, yearSel, pocSel, gpSel].forEach(sel => {
     sel.onchange = applyFilters;
   });
-
   const debouncedSearch = debounce(applyFilters, 200);
   searchCityInput.addEventListener("input", debouncedSearch);
   searchCompanyInput.addEventListener("input", debouncedSearch);
