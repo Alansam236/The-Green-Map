@@ -1,318 +1,146 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>India Company Map</title>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="initial-scale=1, maximum-scale=1">
+  <meta charset="utf-8" />
+  <title>The Green Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Strict Content Security Policy for Google Maps + Nominatim (for fallback geocoding) -->
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self';
-                 style-src 'self' 'unsafe-inline';
-                 script-src 'self' https://maps.googleapis.com https://maps.gstatic.com;
-                 img-src * data:;
-                 connect-src https://maps.googleapis.com https://maps.gstatic.com https://nominatim.openstreetmap.org;
-                 font-src 'self';">
-
-  <style>
-    body,html { margin:0; height:100%; }
-    #map { height:100%; width:100%; }
-    .controls {
-      position:absolute; top:10px; left:10px; z-index:1000;
-      background:#fff; padding:12px; border-radius:6px;
-      box-shadow:0 2px 6px rgba(0,0,0,.3); width:360px;
-      font-size:13px; max-height:90vh; overflow:auto;
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+   on: absolute; bottom: 12px; right: 12px;
+      background: #fff; border: 1px solid #ccc; border-radius: 6px;
+      padding: 8px 10px; font: 14px/1.4 system-ui, sans-serif;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
     }
-    .controls .row { display:flex; gap:8px; margin-bottom:8px; align-items:center; }
-    .controls .row label { flex:0 0 120px; font-weight:600; }
-    .controls .row select, .controls .row input { flex:1; }
-    .legend .row { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
-    .dot { width:14px; height:14px; border-radius:50%; display:inline-block; border:1px solid #3332; }
-    .badge { margin-left:auto; background:#eef3ff; color:#1f3b99; border:1px solid #cdd6ff; border-radius:10px; padding:2px 8px; font-size:12px; min-width:24px; text-align:center; }
-    #counts { margin-top:8px; }
-    #resetBtn { margin-top:4px; }
-    #diag { position:absolute; top:0; right:0; background:#fff3cd; color:#856404; padding:8px 12px; border-left:1px solid #ffeeba; border-bottom:1px solid #ffeeba; font-size:12px; display:none; }
+    .status-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+    .dot-completed { background:#2e7d32; }
+    .dot-working  { background:#f9a825; }
+    .dot-inactive { background:#616161; }
+    .dot-hold     { background:#6d4c41; }
+    .dot-tbu      { background:#0277bd; }
+    .dot-data     { background:#283593; }
   </style>
 </head>
 <body>
+  <div id="map"></div>
 
-<div id="map"></div>
-<div id="diag"></div>
+  <!-- Leaflet JS -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+ wide view)
+    const map = L.map('map').setView([20.5937, 78.9629], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
-<div class="controls">
-  <!-- Search boxes -->
-  <div class="row"><label>Search City</label>    <input type="text" id="searchCity" placeholder="e.g., Hyderabad"></div>
-  <div class="row"><label>Search Company</label> <input type="text" id="searchCompany" placeholder="e.g., Ultratech"></div>
+    // 2) Group your companies by city/state (one marker per city)
+    const rows = Array.isArray(window.GREEN_MAP_DATA) ? window.GREEN_MAP_DATA : [];
+    const normalize = v => (v || '').trim();
+    const cityGroups = new Map();
 
-  <!-- Dropdown filters -->
-  <div class="row"><label>Status</label>   <select id="filterStatus"><option value="__all__">All</option></select></div>
-  <div class="row"><label>Category</label> <select id="filterCategory"><option value="__all__">All</option></select></div>
-  <div class="row"><label>City</label>     <select id="filterCity"><option value="__all__">All</option></select></div>
-  <div class="row"><label>State</label>    <select id="filterState"><option value="__all__">All</option></select></div>
-  <div class="row"><label>Company</label>  <select id="filterCompany"><option value="__all__">All</option></select></div>
-  <div class="row"><label>Year</label>     <select id="filterYear"><option value="__all__">All</option></select></div>
-  <div class="row"><label>PoC</label>      <select id="filterPoC"><option value="__all__">All</option></select></div>
-  <div class="row"><label>GP Team2</label> <select id="filterGP"><option value="__all__">All</option></select></div>
-
-  <button id="resetBtn">Reset</button>
-  <div id="counts"></div>
-
-  <div id="legend" class="legend" style="margin-top:8px;">
-    <b>Status Legend</b>
-  </div>
-</div>
-
-<!-- Load your data: generated by deploy.yml -->
-data.js</script>
-
-<script>
-/* ---------- Diagnostics ---------- */
-function showDiag(msg){ const el=document.getElementById('diag'); el.textContent=msg; el.style.display='block'; }
-
-/* ---------- Utilities ---------- */
-function sleep(ms){ return new Promise(r => setTimeout(r,ms)); }
-function escapeHtml(s){ return String(s||"").replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function uniqueSorted(values){ return Array.from(new Set(values.filter(v=>v!==""&&v!==null&&v!==undefined))).map(v=>String(v)).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:"base"})); }
-function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
-const get = (row, names) => { for (const n of names) if (n in row) return row[n]; return ""; };
-
-/* ---------- Global ---------- */
-let map;
-let markers = [];
-let infoWindow;
-const initialCenter = { lat: 22.9734, lng: 78.6569 };
-const initialZoom   = 5;
-
-/* ---------- Marker helper (colored circle by Status) ---------- */
-function makeStatusSymbol(status, scale=7){
-  const color = (typeof statusColors!=="undefined" && statusColors[status]) ? statusColors[status] : (typeof defaultStatusColor!=="undefined" ? defaultStatusColor : "#607d8b");
-  return {
-    path: google.maps.SymbolPath.CIRCLE,
-    fillColor: color,
-    fillOpacity: 0.95,
-    strokeWeight: 0,
-    scale: scale
-  };
-}
-
-/* ---------- Geocoding (Google Geocoder first; fallback to Nominatim) ---------- */
-const geocoder = () => new google.maps.Geocoder();
-async function geocodeCityState(city, state){
-  const key = (city + (state ? (", " + state) : ", India")).toLowerCase();
-
-  // localStorage cache
-  try {
-    const cached = localStorage.getItem("geo:"+key);
-    if (cached) return JSON.parse(cached);
-  } catch {}
-
-  // Try Google Geocoder
-  try {
-    const res = await geocoder().geocode({ address: city + (state ? (", " + state) : ", India") });
-    if (res && res.results && res.results[0]) {
-      const loc = res.results[0].geometry.location;
-      const coords = { lat: loc.lat(), lng: loc.lng() };
-      try { localStorage.setItem("geo:"+key, JSON.stringify(coords)); } catch {}
-      return coords;
-    }
-  } catch(e){ /* continue to fallback */ }
-
-  // Fallback: Nominatim
-  try {
-    const query = encodeURIComponent(city + (state ? (", " + state) : ", India"));
-    const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`;
-    const r = await fetch(url, { headers: { "Accept":"application/json" } });
-    const j = await r.json();
-    if (Array.isArray(j) && j.length>0){
-      const coords = { lat:+j[0].lat, lng:+j[0].lon };
-      try { localStorage.setItem("geo:"+key, JSON.stringify(coords)); } catch {}
-      await sleep(1100); // be polite to Nominatim
-      return coords;
-    }
-  } catch(e){}
-
-  return null;
-}
-
-/* ---------- Main ---------- */
-async function initMap(){
-  /* 1) Build the map */
-  map = new google.maps.Map(document.getElementById("map"), {
-    center: initialCenter,
-    zoom: initialZoom,
-    mapTypeControl: true,          // enables Roadmap/Satellite/Terrain/Hybrid
-    streetViewControl: false,
-    fullscreenControl: true
-  });
-  infoWindow = new google.maps.InfoWindow();
-
-  /* 2) Read data rows */
-  if (!Array.isArray(window.DATA_ROWS) || window.DATA_ROWS.length === 0){
-    showDiag('No data found: docs/data.js is missing or DATA_ROWS is empty.');
-  }
-  const rows = Array.isArray(window.DATA_ROWS) ? window.DATA_ROWS : [];
-
-  /* 3) Populate filters */
-  const allCities    = uniqueSorted(rows.map(r => get(r, ["City"])));
-  const allStates    = uniqueSorted(rows.map(r => get(r, ["State"])));
-  const allCompanies = uniqueSorted(rows.map(r => get(r, ["Company Name","Company"])));
-  const allCats      = uniqueSorted(rows.map(r => get(r, ["Category"])));
-  const allStatuses  = uniqueSorted(rows.map(r => get(r, ["Status"])));
-  const allYears     = uniqueSorted(rows.map(r => get(r, ["Year of Certification","Year","Certification Year"])));
-  const allPoCs      = uniqueSorted(rows.map(r => get(r, ["PoC","POC"])));
-  const allGPs       = uniqueSorted(rows.map(r => get(r, ["GP Team2","GreenPro Vertical","GP Team","Vertical"])));
-
-  const statusSel  = document.getElementById("filterStatus");
-  const catSel     = document.getElementById("filterCategory");
-  const citySel    = document.getElementById("filterCity");
-  const stateSel   = document.getElementById("filterState");
-  const compSel    = document.getElementById("filterCompany");
-  const yearSel    = document.getElementById("filterYear");
-  const pocSel     = document.getElementById("filterPoC");
-  const gpSel      = document.getElementById("filterGP");
-  const searchCityInput    = document.getElementById("searchCity");
-  const searchCompanyInput = document.getElementById("searchCompany");
-
-  function addOptions(sel, arr){ arr.forEach(v => { const o=document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); }); }
-  addOptions(statusSel,  allStatuses);
-  addOptions(catSel,     allCats);
-  addOptions(citySel,    allCities);
-  addOptions(stateSel,   allStates);
-  addOptions(compSel,    allCompanies);
-  addOptions(yearSel,    allYears);
-  addOptions(pocSel,     allPoCs);
-  addOptions(gpSel,      allGPs);
-
-  /* Legend with live counts */
-  const legend = document.getElementById("legend");
-  const legendMap = {};
-  (allStatuses.length ? allStatuses : ["(no status)"]).forEach(st => {
-    const r = document.createElement("div"); r.className="row";
-    const d = document.createElement("span"); d.className="dot";
-    const color = (typeof statusColors!=="undefined" && statusColors[st]) ? statusColors[st] : (typeof defaultStatusColor!=="undefined" ? defaultStatusColor : "#607d8b");
-    d.style.background = color;
-    const label = document.createTextNode(st);
-    const countSpan = document.createElement("span"); countSpan.className="badge"; countSpan.textContent = "0";
-    r.appendChild(d); r.appendChild(label); r.appendChild(countSpan); legend.appendChild(r);
-    legendMap[st] = { count: countSpan };
-  });
-
-  /* 4) Build markers */
-  const groupBounds = new google.maps.LatLngBounds();
-  markers = [];
-
-  for (const r of rows){
-    const city     = get(r, ["City"]).trim();
-    const state    = get(r, ["State"]).trim();
-    const company  = get(r, ["Company Name","Company"]).trim() || "Unknown Company";
-    const category = get(r, ["Category"]).trim();
-    const status   = get(r, ["Status"]).trim();
-    const year     = get(r, ["Year of Certification","Year","Certification Year"]).toString().trim();
-    const poc      = get(r, ["PoC","POC"]).trim();
-    const gp       = get(r, ["GP Team2","GreenPro Vertical","GP Team","Vertical"]).trim();
-    if (!city) continue;
-
-    let coords = await geocodeCityState(city, state);
-    if (!coords) continue;
-
-    const marker = new google.maps.Marker({
-      position: coords,
-      map,
-      title: company,
-      icon: makeStatusSymbol(status, 7)
-    });
-    marker.meta = { city, state, company, category, status, year, poc, gp };
-
-    marker.addListener('click', () => {
-      infoWindow.setContent(
-        `<b>${escapeHtml(company)}</b><br>` +
-        `${escapeHtml(category)}<br>` +
-        `${escapeHtml(city)}${state ? (', ' + escapeHtml(state)) : ""}<br>` +
-        `<b>Status:</b> ${escapeHtml(status)}<br>` +
-        `<b>Year:</b> ${escapeHtml(year)}<br>` +
-        `<b>PoC:</b> ${escapeHtml(poc)}<br>` +
-        `<b>GP Team2:</b> ${escapeHtml(gp)}`
-      );
-      infoWindow.open({ anchor: marker, map });
+    rows.forEach(r => {
+      const city = normalize(r.city);
+      const state = normalize(r.state);
+      const key = state ? `${city}, ${state}` : city;
+      if (!cityGroups.has(key)) cityGroups.set(key, []);
+      cityGroups.get(key).push(r);
     });
 
-    markers.push(marker);
-    groupBounds.extend(coords);
-  }
+    // 3) LocalStorage cache for geocoded city coordinates
+    const CACHE_KEY = 'greenMapCityCacheV1';
+    const cityCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+    const saveCache = () => localStorage.setItem(CACHE_KEY, JSON.stringify(cityCache));
 
-  if (!groupBounds.isEmpty()) map.fitBounds(groupBounds);
+    // 4) Nominatim geocoding queue — respect 1 req/sec policy
+    const queue = [];
+    function enqueue(q){ if (!queue.includes(q)) queue.push(q); }
 
-  /* 5) Filtering + Search + Live legend counts */
-  const counts = document.getElementById("counts");
-
-  function applyFilters(){
-    const sVal  = statusSel.value;
-    const cVal  = catSel.value;
-    const ciVal = citySel.value;
-    const stVal = stateSel.value;
-    const coVal = compSel.value;
-    const yVal  = yearSel.value;
-    const pVal  = pocSel.value;
-    const gVal  = gpSel.value;
-
-    const searchCity    = searchCityInput.value.trim().toLowerCase();
-    const searchCompany = searchCompanyInput.value.trim().toLowerCase();
-
-    let shown = 0;
-    const statusCounts = {};
-
-    markers.forEach(m => {
-      const matchesDropdown =
-        (sVal === "__all__" || m.meta.status   === sVal) &&
-        (cVal === "__all__" || m.meta.category === cVal) &&
-        (ciVal=== "__all__" || m.meta.city     === ciVal) &&
-        (stVal=== "__all__" || m.meta.state    === stVal) &&
-        (coVal=== "__all__" || m.meta.company  === coVal) &&
-        (yVal === "__all__" || m.meta.year     === yVal) &&
-        (pVal === "__all__" || m.meta.poc      === pVal) &&
-        (gVal === "__all__" || m.meta.gp       === gVal);
-
-      const matchesSearch =
-        (searchCity === ""    || m.meta.city.toLowerCase().includes(searchCity)) &&
-        (searchCompany === "" || m.meta.company.toLowerCase().includes(searchCompany));
-
-      const ok = matchesDropdown && matchesSearch;
-
-      if (ok){
-        m.setMap(map);
-        shown++;
-        const st = m.meta.status || "";
-        statusCounts[st] = (statusCounts[st] || 0) + 1;
-      } else {
-        m.setMap(null);
+    async function geocodeOnce(query) {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+      try {
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' }});
+        const json = await r.json();
+        if (Array.isArray(json) && json.length) {
+          const { lat, lon, display_name } = json[0];
+          cityCache[query] = { lat: +lat, lon: +lon, name: display_name };
+          saveCache();
+          return cityCache[query];
+        }
+        cityCache[query] = null; saveCache(); return null;
+      } catch {
+        return null;
       }
-    });
+    }
 
-    counts.innerHTML = `Total plotted: <b>${markers.length}</b> — showing <b>${shown}</b>`;
-    Object.keys(legendMap).forEach(st => {
-      legendMap[st].count.textContent = statusCounts[st] ? String(statusCounts[st]) : "0";
-    });
-  }
+    // 5) Marker rendering (one per city; popup lists all companies)
+    const statusBadge = s => {
+      const x = (s || '').toLowerCase();
+      if (x.includes('completed')) return '<span class="status-dot dot-completed"></span>Completed';
+      if (x.includes('working'))   return '<span class="status-dot dot-working"></span>Working on Documentation';
+      if (x.includes('inactive'))  return '<span class="status-dot dot-inactive"></span>Inactive';
+      if (x.includes('hold'))      return '<span class="status-dot dot-hold"></span>On Hold';
+      if (x.includes('updated'))   return '<span class="status-dot dot-tbu"></span>To be updated';
+      if (x.includes('data'))      return '<span class="status-dot dot-data"></span>Data Received';
+      return s || '—';
+    };
 
-  [statusSel, catSel, citySel, stateSel, compSel, yearSel, pocSel, gpSel].forEach(sel => sel.onchange = applyFilters);
-  const debouncedSearch = debounce(applyFilters, 200);
-  searchCityInput.addEventListener("input", debouncedSearch);
-  searchCompanyInput.addEventListener("input", debouncedSearch);
+    function renderCity(query, coords) {
+      if (!coords) return;
+      const list = cityGroups.get(query) || [];
+      const items = list.map(item => {
+        const name = item.company || '—';
+        const cat  = item.category || '—';
+        const stat = statusBadge(item.status);
+        const year = item.year || '—';
+        const poc  = item.poc || '—';
+        const team = item.gp_team || '—';
+        return `<li><strong>${name}</strong><br/><small>${cat}</small><br/>${stat}<br/><small>Year: ${year} | PoC: ${poc} | Team: ${team}</small></li>`;
+      }).join('');
+      const popupHtml = `<div><h3 style="margin:0 0 8px 0">${query}</h3><ol style="padding-left:18px">${items}</ol></div>`;
+      const m = L.marker([coords.lat, coords.lon]).addTo(map);
+      m.bindPopup(popupHtml);
+    }
 
-  document.getElementById("resetBtn").onclick = () => {
-    map.setCenter(initialCenter); map.setZoom(initialZoom);
-    [statusSel, catSel, citySel, stateSel, compSel, yearSel, pocSel, gpSel].forEach(sel => sel.value = "__all__");
-    searchCityInput.value = ""; searchCompanyInput.value = "";
-    applyFilters();
-  };
+    // 6) Use cache where available; enqueue the rest
+    for (const q of cityGroups.keys()) {
+      const cached = cityCache[q];
+      if (cached && typeof cached.lat === 'number') renderCity(q, cached);
+      else enqueue(q);
+    }
 
-  applyFilters();
-}
-</script>
+    // 7) Process at ~1 req/sec
+    const timer = setInterval(async () => {
+      if (!queue.length) { clearInterval(timer); return; }
+      const q = queue.shift();
+      const res = await geocodeOnce(q);
+      if (res) renderCity(q, res);
+    }, 1100);
 
-<!-- ⚠️ Replace YOUR_API_KEY below; restrict it to your GitHub Pages domain -->
-https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap</script>
-
+    // 8) Legend
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = () => {
+      const div = L.DomUtil.create('div', 'legend');
+      div.innerHTML = `
+        <div><strong>The Green Map</strong></div>
+        <div>Basemap: OpenStreetMap via Leaflet</div>
+        <div style="margin-top:6px">
+          <div><span class="status-dot dot-completed"></span>Completed</div>
+          <div><span class="status-dot dot-working"></span>Working on Documentation</div>
+          <div><span class="status-dot dot-inactive"></span>Inactive</div>
+          <div><span class="status-dot dot-hold"></span>On Hold</div>
+          <div><span class="status-dot dot-tbu"></span>To be updated</div>
+          <div><span class="status-dot dot-data"></span>Data Received</div>
+        </div>`;
+      return div;
+    };
+    legend.addTo(map);
+  </script>
 </body>
 </html>

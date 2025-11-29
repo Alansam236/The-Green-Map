@@ -1,74 +1,41 @@
 
-name: Build site (Excel -> docs/data.js) for GitHub Pages
+# .github/workflows/deploy.yml
+name: Deploy static site (docs/ → GitHub Pages)
 
 on:
   push:
     branches: [ main ]
-    paths:
-      - 'dataset.xlsx'
-      - 'data.template.js'
-      - 'docs/index.html'
-      - 'docs/assets/**'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
-  build:
+  upload:
+    name: Upload docs/ as Pages artifact
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout main
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          node-version: '18'
+          path: docs
 
-      - name: Install SheetJS (xlsx)
-        run: npm install xlsx@0.18.5
-
-      - name: Build docs/data.js from dataset.xlsx + template
-        run: |
-          node - <<'EOF'
-          const fs = require('fs');
-          try {
-            // Verify files exist
-            if (!fs.existsSync('dataset.xlsx')) {
-              throw new Error('dataset.xlsx not found at repo root');
-            }
-            if (!fs.existsSync('data.template.js')) {
-              throw new Error('data.template.js not found at repo root');
-            }
-
-            const XLSX = require('xlsx');
-            const wb = XLSX.readFile('dataset.xlsx');
-            const ws = wb.Sheets[wb.SheetNames[0]];
-            if (!ws) throw new Error('First sheet not found in dataset.xlsx');
-
-            const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-            console.log('Rows read:', rows.length);
-
-            const template = fs.readFileSync('data.template.js', 'utf8');
-
-            // Append DATA_ROWS
-            const out = template + '\n\nconst DATA_ROWS = ' + JSON.stringify(rows, null, 2) + ';\n';
-
-            // Ensure docs exists
-            if (!fs.existsSync('docs')) fs.mkdirSync('docs');
-
-            fs.writeFileSync('docs/data.js', out, 'utf8');
-            console.log('Wrote docs/data.js');
-          } catch (err) {
-            console.error('ERROR building docs/data.js:', err.message);
-            process.exit(1);
-          }
-          EOF
-
-      - name: Commit docs/data.js
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/data.js
-          git commit -m "Auto-build docs/data.js from dataset.xlsx" || echo "No changes"
-          git push
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: upload
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
