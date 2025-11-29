@@ -6,12 +6,19 @@
   <title>The Green Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Leaflet CSS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-   on: absolute; bottom: 12px; right: 12px;
+  <!-- Inline favicon to prevent /favicon.ico 404 -->
+  <link rel="icon" href="data:image/svg+xml,
+   t y='14' font-size='14'>🗺️</text>
+    </svg>">
+
+  <!-- Leaflet CSS (from jsDelivr; no SRI to keep things simple) -->
+  https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css
+
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100vh; }
+    .legend {
+      position: absolute; bottom: 12px; right: 12px;
       background: #fff; border: 1px solid #ccc; border-radius: 6px;
       padding: 8px 10px; font: 14px/1.4 system-ui, sans-serif;
       box-shadow: 0 1px 4px rgba(0,0,0,0.2);
@@ -29,43 +36,112 @@
   <div id="map"></div>
 
   <!-- Leaflet JS -->
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""
- wide view)
+  https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js</script>
+
+  <!-- SheetJS (xlsx) to read dataset.xlsx in the browser -->
+  https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js</script>
+
+  <script>
+    // --- 0) Helpers ----------------------------------------------------------
+
+    const norm = v => (v ?? '').toString().trim();
+    const statusBadge = s => {
+      const x = (s || '').toLowerCase();
+      if (x.includes('completed')) return '<span class="status-dot dot-completed"></span>Completed';
+      if (x.includes('working'))   return '<span class="status-dot dot-working"></span>Working on Documentation';
+      if (x.includes('inactive'))  return '<span class="status-dot dot-inactive"></span>Inactive';
+      if (x.includes('hold'))      return '<span class="status-dot dot-hold"></span>On Hold';
+      if (x.includes('updated'))   return '<span class="status-dot dot-tbu"></span>To be updated';
+      if (x.includes('data'))      return '<span class="status-dot dot-data"></span>Data Received';
+      return s || '—';
+    };
+
+    // --- 1) Initialize map (India-wide view) --------------------------------
     const map = L.map('map').setView([20.5937, 78.9629], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    }).addTo(map); // Leaflet quick-start pattern. [1](https://github.com/Leaflet/Leaflet/blob/main/docs/examples/quick-start/index.md?plain=1)
 
-    // 2) Group your companies by city/state (one marker per city)
-    const rows = Array.isArray(window.GREEN_MAP_DATA) ? window.GREEN_MAP_DATA : [];
-    const normalize = v => (v || '').trim();
-    const cityGroups = new Map();
+    // Legend
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function(){
+      const div = L.DomUtil.create('div', 'legend');
+      div.innerHTML = `
+        <div><strong>The Green Map</strong></div>
+        <div>Basemap: OpenStreetMap via Leaflet</div>
+        <div style="margin-top:6px">
+          <div><span class="status-dot dot-completed"></span>Completed</div>
+          <div><span class="status-dot dot-working"></span>Working on Documentation</div>
+          <div><span class="status-dot dot-inactive"></span>Inactive</div>
+          <div><span class="status-dot dot-hold"></span>On Hold</div>
+          <div><span class="status-dot dot-tbu"></span>To be updated</div>
+          <div><span class="status-dot dot-data"></span>Data Received</div>
+        </div>
+      `;
+      return div;
+    };
+    legend.addTo(map);
 
-    rows.forEach(r => {
-      const city = normalize(r.city);
-      const state = normalize(r.state);
-      const key = state ? `${city}, ${state}` : city;
-      if (!cityGroups.has(key)) cityGroups.set(key, []);
-      cityGroups.get(key).push(r);
-    });
+    // --- 2) Read dataset.xlsx from the root ---------------------------------
+    // Expect columns exactly: City, State, Company Name, Category, Status,
+    // Year of Certification, PoC, GP Team (as in your file).
+    // We’ll parse the first sheet and build rows with those keys.
+    async function loadExcelRows() {
+      try {
+        const resp = await fetch('dataset.xlsx'); // same-origin fetch from root
+        const buf = await resp.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        const sheetName = wb.SheetNames[0];
+        const json = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
 
-    // 3) LocalStorage cache for geocoded city coordinates
+        // Normalize and keep only rows with a city or company
+        const rows = json.map(r => ({
+          city:      norm(r['City']),
+          state:     norm(r['State']),
+          company:   norm(r['Company Name']),
+          category:  norm(r['Category']),
+          status:    norm(r['Status']),
+          year:      norm(r['Year of Certification']),
+          poc:       norm(r['PoC']),
+          gp_team:   norm(r['GP Team'])
+        })).filter(r => r.city || r.company);
+
+        return rows;
+      } catch (e) {
+        console.error('Failed to read dataset.xlsx', e);
+        alert('Could not read dataset.xlsx. Make sure it is at the repository root.');
+        return [];
+      }
+    }
+
+    // --- 3) Group by city/state (one marker per city) ------------------------
+    function groupByCity(rows) {
+      const groups = new Map();
+      for (const r of rows) {
+        const city = norm(r.city);
+        const state = norm(r.state);
+        const key = state ? `${city}, ${state}` : city;
+        if (!key) continue;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(r);
+      }
+      return groups;
+    }
+
+    // --- 4) Geocoding via Nominatim (1 req/sec; cache in localStorage) -------
+    // Public Nominatim: max 1 request/sec; include a unique UA if you self-host.
+    // (We rate-limit in the client; results cached locally.) [2](https://awareseven.github.io/OSINTsources/)
     const CACHE_KEY = 'greenMapCityCacheV1';
     const cityCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
     const saveCache = () => localStorage.setItem(CACHE_KEY, JSON.stringify(cityCache));
-
-    // 4) Nominatim geocoding queue — respect 1 req/sec policy
     const queue = [];
-    function enqueue(q){ if (!queue.includes(q)) queue.push(q); }
 
-    async function geocodeOnce(query) {
+    function enqueueCity(q) { if (!queue.includes(q)) queue.push(q); }
+    async function geocodeCity(query) {
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
       try {
-        const r = await fetch(url, { headers: { 'Accept': 'application/json' }});
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
         const json = await r.json();
         if (Array.isArray(json) && json.length) {
           const { lat, lon, display_name } = json[0];
@@ -79,21 +155,8 @@
       }
     }
 
-    // 5) Marker rendering (one per city; popup lists all companies)
-    const statusBadge = s => {
-      const x = (s || '').toLowerCase();
-      if (x.includes('completed')) return '<span class="status-dot dot-completed"></span>Completed';
-      if (x.includes('working'))   return '<span class="status-dot dot-working"></span>Working on Documentation';
-      if (x.includes('inactive'))  return '<span class="status-dot dot-inactive"></span>Inactive';
-      if (x.includes('hold'))      return '<span class="status-dot dot-hold"></span>On Hold';
-      if (x.includes('updated'))   return '<span class="status-dot dot-tbu"></span>To be updated';
-      if (x.includes('data'))      return '<span class="status-dot dot-data"></span>Data Received';
-      return s || '—';
-    };
-
-    function renderCity(query, coords) {
+    function renderCity(query, coords, list) {
       if (!coords) return;
-      const list = cityGroups.get(query) || [];
       const items = list.map(item => {
         const name = item.company || '—';
         const cat  = item.category || '—';
@@ -104,43 +167,39 @@
         return `<li><strong>${name}</strong><br/><small>${cat}</small><br/>${stat}<br/><small>Year: ${year} | PoC: ${poc} | Team: ${team}</small></li>`;
       }).join('');
       const popupHtml = `<div><h3 style="margin:0 0 8px 0">${query}</h3><ol style="padding-left:18px">${items}</ol></div>`;
-      const m = L.marker([coords.lat, coords.lon]).addTo(map);
-      m.bindPopup(popupHtml);
+      L.marker([coords.lat, coords.lon]).addTo(map).bindPopup(popupHtml);
     }
 
-    // 6) Use cache where available; enqueue the rest
-    for (const q of cityGroups.keys()) {
-      const cached = cityCache[q];
-      if (cached && typeof cached.lat === 'number') renderCity(q, cached);
-      else enqueue(q);
-    }
+    // --- 5) Main: load, group, geocode, render -------------------------------
+    (async () => {
+      console.log('Green Map: loading dataset.xlsx …');
+      const rows = await loadExcelRows();
+      const groups = groupByCity(rows);
 
-    // 7) Process at ~1 req/sec
-    const timer = setInterval(async () => {
-      if (!queue.length) { clearInterval(timer); return; }
-      const q = queue.shift();
-      const res = await geocodeOnce(q);
-      if (res) renderCity(q, res);
-    }, 1100);
+      // Fit to all markers once we have some coords
+      const bounds = L.latLngBounds([]);
 
-    // 8) Legend
-    const legend = L.control({ position: 'bottomright' });
-    legend.onAdd = () => {
-      const div = L.DomUtil.create('div', 'legend');
-      div.innerHTML = `
-        <div><strong>The Green Map</strong></div>
-        <div>Basemap: OpenStreetMap via Leaflet</div>
-        <div style="margin-top:6px">
-          <div><span class="status-dot dot-completed"></span>Completed</div>
-          <div><span class="status-dot dot-working"></span>Working on Documentation</div>
-          <div><span class="status-dot dot-inactive"></span>Inactive</div>
-          <div><span class="status-dot dot-hold"></span>On Hold</div>
-          <div><span class="status-dot dot-tbu"></span>To be updated</div>
-          <div><span class="status-dot dot-data"></span>Data Received</div>
-        </div>`;
-      return div;
-    };
-    legend.addTo(map);
+      for (const [query, list] of groups.entries()) {
+        const cached = cityCache[query];
+        if (cached && typeof cached.lat === 'number') {
+          renderCity(query, cached, list);
+          bounds.extend([cached.lat, cached.lon]);
+        } else {
+          enqueueCity(query);
+        }
+      }
+
+      // Process geocoding queue at ~1 req/sec (policy-friendly)
+      const timer = setInterval(async () => {
+        if (!queue.length) { clearInterval(timer); if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24] }); return; }
+        const q = queue.shift();
+        const res = await geocodeCity(q);
+        if (res) {
+          renderCity(q, res, groups.get(q) || []);
+          bounds.extend([res.lat, res.lon]);
+        }
+      }, 1100);
+    })();
   </script>
 </body>
 </html>
