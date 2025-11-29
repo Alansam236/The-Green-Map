@@ -1,27 +1,34 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <title>India Supplier Map (Excel-driven)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <!-- Leaflet CSS -->
-  https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
-  <!-- SheetJS (xlsx) -->
-  https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js</script>
+
+  <!-- Leaflet CSS (must be in head) -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+   height -->
   <style>
     html, body { height: 100%; margin: 0; }
-    #toolbar {
-      display: grid; gap: .5rem; grid-template-columns: repeat(4, minmax(160px, 1fr));
-      padding: .75rem; border-bottom: 1px solid #eee; font-family: system-ui, sans-serif;
-    }
-    #map { height: calc(100% - 64px); }
-    .legend { background: white; padding: .5rem .75rem; line-height: 1.4; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+    #toolbar { padding: .75rem; border-bottom: 1px solid #eee; font-family: system-ui, sans-serif; }
+    /* Make the map tall enough: either viewport height or calc with toolbar */
+    #map { height: calc(100vh - 64px); }
+    .legend { background: white; padding: .5rem .75rem; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
     .legend .item { display: flex; align-items: center; margin-bottom: 4px; }
     .legend .swatch { width: 14px; height: 14px; border-radius: 50%; margin-right: 8px; border: 1px solid #8884; }
     .pill { display:inline-block; padding:2px 6px; border-radius:12px; background:#eee; font-size:12px; margin:2px 4px 0 0; }
     select, input { padding: .35rem .5rem; border: 1px solid #bbb; border-radius: 6px; }
-    .attribution { font-size: 12px; }
   </style>
+
+  <!-- SheetJS (xlsx) MUST load before any code that calls XLSX -->
+  https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js</script>
+
+  <!-- (Optional) you can also load from jsDelivr:
+  https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js</script>
+  -->
 </head>
 <body>
   <div id="toolbar">
@@ -45,14 +52,15 @@
 
   <div id="map"></div>
 
-  <!-- Leaflet JS -->
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-   late config (status colors, geo URLs, fallback coords) -->
-  ./data.template.js</script>
-  <!-- Optional stub (not required, but you asked for it) -->
-  ./data.js</script>
 
+<!-- Leaflet JS -->
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZ
+./data.template.js</script>
+
+<!-- Optional stub; not used by the app -->
+<scriptjs</script>
   <script>
     // ---------------- Leaflet base map ----------------
     const map = L.map('map', { center: [22.9, 78.8], zoom: 5 });
