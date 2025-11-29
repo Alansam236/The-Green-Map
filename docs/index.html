@@ -15,7 +15,7 @@
                  connect-src https://tile.openstreetmap.org https://nominatim.openstreetmap.org;
                  font-src 'self';">
 
-  <!-- Local Leaflet (no CDNs) -->
+  <!-- Local Leaflet -->
   assets/leaflet/leaflet.css
   assets/leaflet/leaflet.js</script>
 
@@ -79,7 +79,7 @@ const initialZoom   = 5;
 
 let map;
 try {
-  // Single-host tiles (no {s}.subdomains) to reduce corporate blocking
+  // Single-host tiles
   const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors'
