@@ -1,30 +1,35 @@
-
-// TEMP ONLY — will be overwritten by deploy.yml once it runs
-const statusColors = { "Completed": "#1fa83b", "Inactive": "#a0a0a0" };
-const defaultStatusColor = "#607d8b";
-const geo_lookup = {
-  "hyderabad, telangana": { lat: 17.3850, lng: 78.4867 },
-  "mumbai, maharashtra":  { lat: 19.0760, lng: 72.8777 }
-};
+// Auto-generated from dataset.xlsx
+/* Fields: city, company, category, status, poc, gp_team */
 const DATA_ROWS = [
   {
-    "City": "Hyderabad",
-    "State": "Telangana",
-    "Company Name": "Sugna Metals Ltd",
-    "Category": "TMT Rebars",
-    "Status": "Completed",
-    "Year of Certification": "2023",
-    "PoC": "Alan",
-    "GP Team2": "Metals"
+    "city": "Kutch",
+    "company": "Amulyamica (Purbanchal)",
+    "category": "Boards and Panels",
+    "status": "Inactive",
+    "poc": null,
+    "gp_team": null
   },
   {
-    "City": "Mumbai",
-    "State": "Maharashtra",
-    "Company Name": "Godrej Security Solutions",
-    "Category": "Ready Mix Concrete",
-    "Status": "Inactive",
-    "Year of Certification": "2022",
-    "PoC": "PKS",
-    "GP Team2": "Concrete"
-  }
+    "city": "Nashik",
+    "company": "Circumference Projects India Ltd",
+    "category": "Furniture",
+    "status": "Inactive",
+    "poc": null,
+    "gp_team": null
+  },
+  // ...315 more
 ];
+
+const DATA_META = {
+  "unique_cities_count": 117,
+  "unique_cities": [
+    "04 RMC", "07 locations", "Abu", "Ahmedabad", "Ahmednagar", "Aklimpur", "Alwar",
+    // (preview only; full list in file)
+  ],
+  "status_counts": {
+    "Inactive": 23,
+    "Completed": 120,
+    "Working on Documentation": 148,
+    // ...
+  }
+};
