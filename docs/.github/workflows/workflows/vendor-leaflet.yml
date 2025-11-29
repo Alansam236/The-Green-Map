@@ -1,0 +1,42 @@
+
+name: Vendor Leaflet assets into docs/assets
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/vendor-leaflet.yml'
+      - 'docs/index.html'
+      - 'data.template.js'
+      - 'dataset.xlsx'
+  workflow_dispatch:
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create folders
+        run: |
+          mkdir -p docs/assets/leaflet/images
+
+      - name: Download Leaflet 1.9.4 (CSS/JS + images)
+        run: |
+          # CSS & JS (minified official build)
+          curl -L -o docs/assets/leaflet/leaflet.css https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css
+          curl -L -o docs/assets/leaflet/leaflet.js  https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js
+
+          # Images referenced by leaflet.css
+          curl -L -o docs/assets/leaflet/images/marker-icon.png    https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png
+          curl -L -o docs/assets/leaflet/images/marker-icon-2x.png https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon-2x.png
+          curl -L -o docs/assets/leaflet/images/marker-shadow.png  https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-shadow.png
+
+      - name: Commit vendored Leaflet files
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/assets/leaflet/leaflet.css docs/assets/leaflet/leaflet.js docs/assets/leaflet/images/*
+          git commit -m "Vendor Leaflet 1.9.4 assets into docs/assets" || echo "No changes"
+          git push
