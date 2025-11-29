@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,7 +5,7 @@
   <title>The Green Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Leaflet CSS -->
+  <!-- Leaflet CSS (SRI + CORS) -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -28,18 +27,18 @@
 <body>
   <div id="map"></div>
 
-  <!-- Leaflet JS -->
+  <!-- Leaflet JS (SRI + CORS) -->
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""
- wide view)
+    crossorigin="anonymous"
+ : index.html loaded"); // quick sanity log
+
     const map = L.map('map').setView([20.5937, 78.9629], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
-
     // 2) Group your companies by city/state (one marker per city)
     const rows = Array.isArray(window.GREEN_MAP_DATA) ? window.GREEN_MAP_DATA : [];
     const normalize = v => (v || '').trim();
