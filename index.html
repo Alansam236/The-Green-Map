@@ -6,10 +6,17 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="initial-scale=1, maximum-scale=1">
 
-  <!-- Leaflet & XLSX (separate, correct URLs) -->
-  https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
-  https://unpkg.com/leaflet@1.9.4/dist/leaflet.js</script>
-  https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js</script>
+  <!-- Strict Content Security Policy -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self';
+                 style-src 'self';
+                 script-src 'self';
+                 img-src * data:;
+                 connect-src https://nominatim.openstreetmap.org https://{s}.tile.openstreetmap.org https://tile.openstreetmap.org;
+                 font-src 'self';">
+
+  <!-- Local Leaflet (no CDN) -->
+  <link rel="stylesheet" href="assets/leaflet/leaflet.js</script>
 
   <style>
     body,html { margin:0; height:100%; }
@@ -57,40 +64,21 @@
   </div>
 </div>
 
-<!-- Your statusColors / defaultStatusColor / geo_lookup -->
+<!-- Built by GitHub Actions into gh-pages -->
 data.js</script>
 
 <script>
-/* ---------- Map & Basemaps ---------- */
 const initialCenter = [22.9734, 78.6569]; // India
 const initialZoom   = 5;
 
+// Default OSM tiles (works behind most corporate networks)
 const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution: '&copy; OpenStreetMap contributors'
 });
-const cartoPositron = L.tileLayer(
-  "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-  { attribution: '&copy; OpenStreetMap contributors &copy; CARTO' }
-);
-const openTopo = L.tileLayer(
-  "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-  { attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Tiles: &copy; OpenTopoMap' }
-);
-const esriImagery = L.tileLayer(
-  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-  { attribution: 'Tiles &copy; Esri & the GIS User Community' }
-);
-
 const map = L.map("map", { center: initialCenter, zoom: initialZoom, layers: [osm] });
-L.control.layers({
-  "OpenStreetMap": osm,
-  "Light (CartoDB Positron)": cartoPositron,
-  "Topographic (OpenTopoMap)": openTopo,
-  "Satellite (Esri World Imagery)": esriImagery
-}, null, { position: "topright" }).addTo(map);
 
-/* ---------- Utilities ---------- */
+// Utilities
 function sleep(ms){ return new Promise(r => setTimeout(r,ms)); }
 function escapeHtml(s){
   return String(s||"").replace(/[&<>\"']/g, c => (
@@ -102,26 +90,12 @@ function uniqueSorted(values){
               .map(v => String(v))
               .sort((a,b)=> a.localeCompare(b, undefined, {sensitivity: "base"}));
 }
-function debounce(fn, ms){
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-}
+function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+const get = (row, names) => { for (const n of names) if (n in row) return row[n]; return ""; };
 
-/* ---------- Main ---------- */
-async function loadAndPlot(){
-  // Load workbook (must be accessible at the same path on GitHub Pages)
-  const resp = await fetch("dataset.xlsx");
-  const buf  = await resp.arrayBuffer();
-  const wb   = XLSX.read(buf, {type:"array"});
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:""});
+(async function(){
+  const rows = Array.isArray(window.DATA_ROWS) ? window.DATA_ROWS : [];
 
-  // Header normalization / fallback
-  const get = (row, nameList) => {
-    for (const n of nameList) { if (n in row) return row[n]; }
-    return "";
-  };
-
-  // Collect field arrays for filters
   const allCities    = uniqueSorted(rows.map(r => get(r, ["City"])));
   const allStates    = uniqueSorted(rows.map(r => get(r, ["State"])));
   const allCompanies = uniqueSorted(rows.map(r => get(r, ["Company Name","Company"])));
@@ -131,7 +105,6 @@ async function loadAndPlot(){
   const allPoCs      = uniqueSorted(rows.map(r => get(r, ["PoC","POC"])));
   const allGPs       = uniqueSorted(rows.map(r => get(r, ["GP Team2","GreenPro Vertical","GP Team","Vertical"])));
 
-  // Populate filter selects
   const statusSel  = document.getElementById("filterStatus");
   const catSel     = document.getElementById("filterCategory");
   const citySel    = document.getElementById("filterCity");
@@ -140,15 +113,11 @@ async function loadAndPlot(){
   const yearSel    = document.getElementById("filterYear");
   const pocSel     = document.getElementById("filterPoC");
   const gpSel      = document.getElementById("filterGP");
-
   const searchCityInput    = document.getElementById("searchCity");
   const searchCompanyInput = document.getElementById("searchCompany");
 
   function addOptions(sel, arr){
-    arr.forEach(v => {
-      const o = document.createElement("option");
-      o.value = v; o.textContent = v; sel.appendChild(o);
-    });
+    arr.forEach(v => { const o = document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); });
   }
   addOptions(statusSel,  allStatuses);
   addOptions(catSel,     allCats);
@@ -159,26 +128,21 @@ async function loadAndPlot(){
   addOptions(pocSel,     allPoCs);
   addOptions(gpSel,      allGPs);
 
-  // Build Status legend from your statusColors WITH COUNT BADGES
+  // Legend with live counts
   const legend = document.getElementById("legend");
-  const legendMap = {}; // status => {countSpan}
+  const legendMap = {};
   allStatuses.forEach(st => {
     const r = document.createElement("div"); r.className="row";
     const d = document.createElement("span"); d.className="dot";
     d.style.background = (typeof statusColors !== "undefined" && statusColors[st]) ? statusColors[st] : (typeof defaultStatusColor !== "undefined" ? defaultStatusColor : "#607d8b");
     const label = document.createTextNode(st);
     const countSpan = document.createElement("span"); countSpan.className="badge"; countSpan.textContent = "0";
-    r.appendChild(d);
-    r.appendChild(label);
-    r.appendChild(countSpan);
-    legend.appendChild(r);
+    r.appendChild(d); r.appendChild(label); r.appendChild(countSpan); legend.appendChild(r);
     legendMap[st] = { count: countSpan };
   });
 
-  // Plot markers
   const group   = L.layerGroup().addTo(map);
   const markers = [];
-
   for (const r of rows){
     const city     = get(r, ["City"]).trim();
     const state    = get(r, ["State"]).trim();
@@ -188,24 +152,14 @@ async function loadAndPlot(){
     const year     = get(r, ["Year of Certification","Year","Certification Year"]).toString().trim();
     const poc      = get(r, ["PoC","POC"]).trim();
     const gp       = get(r, ["GP Team2","GreenPro Vertical","GP Team","Vertical"]).trim();
-
     if (!city) continue;
 
-    // Geocoding key
     const key = (city + (state ? (", " + state) : ", India")).toLowerCase();
-
-    // Lookup from local geo list or cache
     let coords = null;
     if (typeof geo_lookup !== "undefined" && geo_lookup[key]) coords = geo_lookup[key];
-
     if (!coords){
-      try {
-        const cached = localStorage.getItem("geo:"+key);
-        if (cached) coords = JSON.parse(cached);
-      } catch {}
+      try { const cached = localStorage.getItem("geo:"+key); if (cached) coords = JSON.parse(cached); } catch {}
     }
-
-    // Fallback to Nominatim (with 1.1s delay)
     if (!coords){
       const query = encodeURIComponent(city + (state ? (", " + state) : ", India"));
       const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`;
@@ -216,22 +170,14 @@ async function loadAndPlot(){
           coords = { lat: +j[0].lat, lng: +j[0].lon };
           try { localStorage.setItem("geo:"+key, JSON.stringify(coords)); } catch {}
         }
-      } catch(e) { /* continue */ }
+      } catch(e) {}
       await sleep(1100);
     }
     if (!coords) continue;
 
     const fill = (typeof statusColors !== "undefined" && statusColors[status]) ? statusColors[status] : (typeof defaultStatusColor !== "undefined" ? defaultStatusColor : "#607d8b");
-
-    const marker = L.circleMarker([coords.lat, coords.lng], {
-      radius: 7,
-      fillColor: fill,
-      fillOpacity: 0.95,
-      stroke: false
-    });
-
+    const marker = L.circleMarker([coords.lat, coords.lng], { radius: 7, fillColor: fill, fillOpacity: 0.95, stroke: false });
     marker.meta = { city, state, company, category, status, year, poc, gp };
-
     marker.bindPopup(
       `<b>${escapeHtml(company)}</b><br>` +
       `${escapeHtml(category)}<br>` +
@@ -241,30 +187,18 @@ async function loadAndPlot(){
       `<b>PoC:</b> ${escapeHtml(poc)}<br>` +
       `<b>GP Team2:</b> ${escapeHtml(gp)}`
     );
-
     marker.addTo(group);
     markers.push(marker);
   }
 
-  // Filtering + Search
   const counts = document.getElementById("counts");
-
   function applyFilters(){
-    const sVal  = statusSel.value;
-    const cVal  = catSel.value;
-    const ciVal = citySel.value;
-    const stVal = stateSel.value;
-    const coVal = compSel.value;
-    const yVal  = yearSel.value;
-    const pVal  = pocSel.value;
-    const gVal  = gpSel.value;
-
+    const sVal  = statusSel.value, cVal  = catSel.value, ciVal = citySel.value, stVal = stateSel.value;
+    const coVal = compSel.value,   yVal  = yearSel.value, pVal  = pocSel.value, gVal  = gpSel.value;
     const searchCity    = searchCityInput.value.trim().toLowerCase();
     const searchCompany = searchCompanyInput.value.trim().toLowerCase();
 
-    let shown = 0;
-    const statusCounts = {}; // visible counts per status
-
+    let shown = 0; const statusCounts = {};
     markers.forEach(m => {
       const matchesDropdown =
         (sVal === "__all__" || m.meta.status   === sVal) &&
@@ -281,30 +215,17 @@ async function loadAndPlot(){
         (searchCompany === "" || m.meta.company.toLowerCase().includes(searchCompany));
 
       const ok = matchesDropdown && matchesSearch;
-
       if (ok){
         if (!map.hasLayer(m)) m.addTo(group);
-        shown++;
-        const st = m.meta.status || "";
-        statusCounts[st] = (statusCounts[st] || 0) + 1;
-      } else {
-        if (map.hasLayer(m)) group.removeLayer(m);
-      }
+        shown++; const st = m.meta.status || ""; statusCounts[st] = (statusCounts[st] || 0) + 1;
+      } else { if (map.hasLayer(m)) group.removeLayer(m); }
     });
 
-    // Update counts text
     counts.innerHTML = `Total plotted: <b>${markers.length}</b> — showing <b>${shown}</b>`;
-
-    // Update legend badges
-    Object.keys(legendMap).forEach(st => {
-      legendMap[st].count.textContent = statusCounts[st] ? String(statusCounts[st]) : "0";
-    });
+    Object.keys(legendMap).forEach(st => { legendMap[st].count.textContent = statusCounts[st] ? String(statusCounts[st]) : "0"; });
   }
 
-  // Wire events
-  [statusSel, catSel, citySel, stateSel, compSel, yearSel, pocSel, gpSel].forEach(sel => {
-    sel.onchange = applyFilters;
-  });
+  [statusSel, catSel, citySel, stateSel, compSel, yearSel, pocSel, gpSel].forEach(sel => sel.onchange = applyFilters);
   const debouncedSearch = debounce(applyFilters, 200);
   searchCityInput.addEventListener("input", debouncedSearch);
   searchCompanyInput.addEventListener("input", debouncedSearch);
@@ -312,15 +233,10 @@ async function loadAndPlot(){
   document.getElementById("resetBtn").onclick = () => {
     map.setView(initialCenter, initialZoom);
     [statusSel, catSel, citySel, stateSel, compSel, yearSel, pocSel, gpSel].forEach(sel => sel.value = "__all__");
-    searchCityInput.value = "";
-    searchCompanyInput.value = "";
-    applyFilters();
+    searchCityInput.value = ""; searchCompanyInput.value = ""; applyFilters();
   };
-
   applyFilters();
-}
-
-loadAndPlot();
+})();
 </script>
 </body>
 </html>
