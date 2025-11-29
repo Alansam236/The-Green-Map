@@ -70,6 +70,7 @@
 <!-- Load your data (must be a real <script> tag, not plain text) -->
 data.js</script>
 
+
 <script>
 /* ---------- Diagnostics ---------- */
 function showDiag(msg){
@@ -117,8 +118,8 @@ function uniqueSorted(values){
 function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 const get = (row, names) => { for (const n of names) if (n in row) return row[n]; return ""; };
 
-/* ---------- Main ---------- */
-(function(){
+/* ---------- Main (async!) ---------- */
+(async function(){
   if (!Array.isArray(window.DATA_ROWS) || window.DATA_ROWS.length === 0){
     showDiag('No data found: docs/data.js is missing or DATA_ROWS is empty.');
   }
