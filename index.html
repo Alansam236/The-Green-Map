@@ -1,204 +1,273 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>The Green Map</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- Inline favicon to prevent /favicon.ico 404 -->
-  <link rel="icon" href="data:image/svg+xml,
-   t y='14' font-size='14'>🗺️</text>
-    </svg>">
-
-  <!-- Leaflet CSS (from jsDelivr; no SRI to keep things simple) -->
-  https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css
-
-  <style>
-    html, body { height: 100%; margin: 0; }
-    #map { height: 100vh; }
-    .legend {
-      position: absolute; bottom: 12px; right: 12px;
-      background: #fff; border: 1px solid #ccc; border-radius: 6px;
-      padding: 8px 10px; font: 14px/1.4 system-ui, sans-serif;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  <title>India Supplier Map</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+   margin: 0; }
+    #toolbar {
+      display: grid; gap: .5rem; grid-template-columns: repeat(4, minmax(160px, 1fr));
+      padding: .75rem; border-bottom: 1px solid #eee; font-family: system-ui, sans-serif;
     }
-    .status-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
-    .dot-completed { background:#2e7d32; }
-    .dot-working  { background:#f9a825; }
-    .dot-inactive { background:#616161; }
-    .dot-hold     { background:#6d4c41; }
-    .dot-tbu      { background:#0277bd; }
-    .dot-data     { background:#283593; }
+    #map { height: calc(100% - 64px); }
+    .legend { background: white; padding: .5rem .75rem; line-height: 1.4; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+    .legend .item { display: flex; align-items: center; margin-bottom: 4px; }
+    .legend .swatch { width: 14px; height: 14px; border-radius: 50%; margin-right: 8px; border: 1px solid #8884; }
+    .pill { display:inline-block; padding:2px 6px; border-radius:12px; background:#eee; font-size:12px; margin:2px 4px 0 0; }
+    select, input { padding: .35rem .5rem; border: 1px solid #bbb; border-radius: 6px; }
+    .attribution { font-size: 12px; }
   </style>
 </head>
 <body>
+  <div id="toolbar">
+    <div>
+      <label for="statusFilter"><strong>Status</strong></label><br />
+      <select id="statusFilter">
+        <option value="">All</option>
+      </select>
+    </div>
+    <div>
+      <label for="categoryFilter"><strong>Category</strong></label><br />
+      <select id="categoryFilter">
+        <option value="">All</option>
+      </select>
+    </div>
+    <div>
+      <label for="search"><strong>Search company</strong></label><br />
+      <input id="search" type="search" placeholder="Type to filter…" />
+    </div>
+    <div>
+      <label><strong>Layers</strong></label><br />
+      <label><input type="checkbox" id="toggleChoropleth" /> State choropleth</label>
+    </div>
+  </div>
+
   <div id="map"></div>
 
   <!-- Leaflet JS -->
-  https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js</script>
-
-  <!-- SheetJS (xlsx) to read dataset.xlsx in the browser -->
-  https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js</script>
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    data and template config -->
+  ./data.js</script>
+  ./data.template.js</script>
 
   <script>
-    // --- 0) Helpers ----------------------------------------------------------
+    // --- Map setup ---
+    const map = L.map('map', {
+      center: [22.9, 78.8], // India center-ish
+      zoom: 5,
+    });
 
-    const norm = v => (v ?? '').toString().trim();
-    const statusBadge = s => {
-      const x = (s || '').toLowerCase();
-      if (x.includes('completed')) return '<span class="status-dot dot-completed"></span>Completed';
-      if (x.includes('working'))   return '<span class="status-dot dot-working"></span>Working on Documentation';
-      if (x.includes('inactive'))  return '<span class="status-dot dot-inactive"></span>Inactive';
-      if (x.includes('hold'))      return '<span class="status-dot dot-hold"></span>On Hold';
-      if (x.includes('updated'))   return '<span class="status-dot dot-tbu"></span>To be updated';
-      if (x.includes('data'))      return '<span class="status-dot dot-data"></span>Data Received';
-      return s || '—';
-    };
-
-    // --- 1) Initialize map (India-wide view) --------------------------------
-    const map = L.map('map').setView([20.5937, 78.9629], 5);
+    // OSM base tiles with required attribution
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map); // Leaflet quick-start pattern. [1](https://github.com/Leaflet/Leaflet/blob/main/docs/examples/quick-start/index.md?plain=1)
+      maxZoom: 18,
+      attribution: '&copy; https://www.openstreetmap.org/copyrightOpenStreetMap</a> contributors',
+    }).addTo(map);
 
-    // Legend
-    const legend = L.control({ position: 'bottomright' });
-    legend.onAdd = function(){
-      const div = L.DomUtil.create('div', 'legend');
-      div.innerHTML = `
-        <div><strong>The Green Map</strong></div>
-        <div>Basemap: OpenStreetMap via Leaflet</div>
-        <div style="margin-top:6px">
-          <div><span class="status-dot dot-completed"></span>Completed</div>
-          <div><span class="status-dot dot-working"></span>Working on Documentation</div>
-          <div><span class="status-dot dot-inactive"></span>Inactive</div>
-          <div><span class="status-dot dot-hold"></span>On Hold</div>
-          <div><span class="status-dot dot-tbu"></span>To be updated</div>
-          <div><span class="status-dot dot-data"></span>Data Received</div>
+    // --- Color palette for statuses from template ---
+    const STATUS_COLORS = (window.STATUS_COLORS || {
+      'Completed': '#2e7d32',
+      'Working on Documentation': '#1e88e5',
+      'Inactive': '#757575',
+      'Hold': '#ef6c00',
+      'To be updated': '#8e24aa',
+      'Certification Payment Pending': '#c62828',
+      'Intro Session Pending': '#6d4c41',
+      'Data Received': '#3949ab',
+      'Waiting for CTO, on-hold': '#bdbdbd',
+      'Unknown': '#9e9e9e'
+    });
+
+    // Helper to color by status
+    function statusColor(s) {
+      return STATUS_COLORS[s] || STATUS_COLORS['Unknown'] || '#888';
+    }
+
+    // Normalize for matching against city lookup
+    const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '');
+
+    // --- Optional: load cities lookup (lat/lon + state) ---
+    // Put the file from Simplemaps (MIT-licensed subset) as /assets/in-cities.json in your repo.
+    // Fallback to CITY_COORDS from data.template.js if not present.
+    let cityIndex = new Map();
+    let cityIndexReady = false;
+
+    async function tryLoadCitiesIndex() {
+      try {
+        const resp = await fetch('./assets/in-cities.json'); // add this file to your repo
+        if (!resp.ok) throw new Error('cities file missing');
+        const cities = await resp.json(); // expect { "cities": [ {city, lat, lng, admin_name}, ... ] } or array
+        const arr = Array.isArray(cities) ? cities : (cities.cities || []);
+        arr.forEach(c => {
+          const key = normalize(c.city);
+          cityIndex.set(key, { lat: +c.lat, lon: +c.lng, state: c.admin_name });
+        });
+        cityIndexReady = true;
+      } catch (e) {
+        console.warn('City index not found; will use CITY_COORDS fallback.', e);
+        // Load from CITY_COORDS (defined in data.template.js)
+        const cc = window.CITY_COORDS || {};
+        Object.keys(cc).forEach(k => {
+          const key = normalize(k);
+          cityIndex.set(key, { lat: +cc[k][0], lon: +cc[k][1], state: cc[k][2] || null });
+        });
+        cityIndexReady = cityIndex.size > 0;
+      }
+    }
+
+    // Resolve lat/lon for a city string
+    function resolveCity(cityName) {
+      const hit = cityIndex.get(normalize(cityName));
+      return hit || null;
+    }
+
+    // --- Build filters ---
+    const statusSet = new Set(), categorySet = new Set();
+    (window.DATA_ROWS || []).forEach(r => {
+      if (r.status) statusSet.add(r.status);
+      if (r.category) categorySet.add(r.category);
+    });
+    const statusFilterEl = document.getElementById('statusFilter');
+    const categoryFilterEl = document.getElementById('categoryFilter');
+    for (const s of Array.from(statusSet).sort()) {
+      const opt = document.createElement('option'); opt.value = s; opt.textContent = s; statusFilterEl.appendChild(opt);
+    }
+    for (const c of Array.from(categorySet).sort()) {
+      const opt = document.createElement('option'); opt.value = c; opt.textContent = c; categoryFilterEl.appendChild(opt);
+    }
+
+    // --- Layers ---
+    const markersLayer = L.layerGroup().addTo(map);
+    let choroplethLayer = null;
+
+    function companyPopup(r, coord) {
+      return `
+        <div style="min-width:220px">
+          <div><strong>${r.company || '—'}</strong></div>
+          <div><span class="pill">${r.category || '—'}</span> <span class="pill" style="background:${statusColor(r.status)};color:white;">${r.status || 'Unknown'}</span></div>
+          <div>${r.city || ''}${coord?.state ? ', ' + coord.state : ''}</div>
+          ${r.poc ? `<div>PoC: ${r.poc}</div>` : '' }
+          ${r.gp_team ? `<div>GP Team: ${r.gp_team}</div>` : '' }
         </div>
       `;
+    }
+
+    function renderMarkers() {
+      markersLayer.clearLayers();
+      const statusFilter = statusFilterEl.value;
+      const categoryFilter = categoryFilterEl.value;
+      const q = document.getElementById('search').value.trim().toLowerCase();
+
+      let missing = 0, plotted = 0;
+
+      (window.DATA_ROWS || []).forEach(r => {
+        if (statusFilter && r.status !== statusFilter) return;
+        if (categoryFilter && r.category !== categoryFilter) return;
+        if (q && !(r.company || '').toLowerCase().includes(q)) return;
+
+        const coord = resolveCity(r.city);
+        if (!coord) { missing++; return; }
+
+        const m = L.circleMarker([coord.lat, coord.lon], {
+          radius: 6,
+          color: statusColor(r.status),
+          fillColor: statusColor(r.status),
+          fillOpacity: 0.85,
+          weight: 1
+        }).bindPopup(companyPopup(r, coord));
+        markersLayer.addLayer(m);
+        plotted++;
+      });
+
+      console.info(`Plotted: ${plotted}, missing coords: ${missing}`);
+    }
+
+    // --- Choropleth (state counts) ---
+    async function renderChoropleth(toggleOn) {
+      if (choroplethLayer) { map.removeLayer(choroplethLayer); choroplethLayer = null; }
+      if (!toggleOn) return;
+
+      // Need states geojson and city->state resolution
+      if (!cityIndexReady) {
+        console.warn('No city index; choropleth needs state names.');
+        return;
+      }
+
+      // Fetch India states GeoJSON (you can replace URL in data.template.js)
+      const url = (window.GEO_SOURCES && window.GEO_SOURCES.INDIA_STATES_GEOJSON_URL)
+                  || 'https://raw.githubusercontent.com/india-in-data/india_maps/master/india_state_ut_administered.geojson';
+      const gj = await fetch(url).then(r => r.json());
+
+      // Build state counts
+      const counts = new Map();
+      (window.DATA_ROWS || []).forEach(r => {
+        const coord = resolveCity(r.city);
+        const state = coord?.state;
+        if (!state) return;
+        counts.set(state, (counts.get(state) || 0) + 1);
+      });
+
+      function getCountFor(feature) {
+        const name = feature.properties?.name || feature.properties?.st_nm || feature.properties?.NAME_1;
+        if (!name) return 0;
+        // try exact and loose match
+        const exact = counts.get(name); if (exact) return exact;
+        // Loose normalize
+        const found = Array.from(counts.entries()).find(([k]) => normalize(k) === normalize(name));
+        return found ? found[1] : 0;
+      }
+
+      function fillFor(count) {
+        // simple ramp
+        if (count === 0) return '#efefef';
+        if (count < 2) return '#c5e1a5';
+        if (count < 5) return '#81c784';
+        if (count < 10) return '#4caf50';
+        return '#2e7d32';
+      }
+
+      choroplethLayer = L.geoJSON(gj, {
+        style: f => {
+          const c = getCountFor(f);
+          return { weight: 1, color: '#666', fillColor: fillFor(c), fillOpacity: .6 };
+        },
+        onEachFeature: (feature, layer) => {
+          const name = feature.properties?.name || feature.properties?.st_nm || feature.properties?.NAME_1 || 'State';
+          const c = getCountFor(feature);
+          layer.bindPopup(`<strong>${name}</strong><br/>Companies: ${c}`);
+        }
+      }).addTo(map);
+    }
+
+    // --- Legend ---
+    const legend = L.control({position: 'bottomright'});
+    legend.onAdd = function() {
+      const div = L.DomUtil.create('div', 'legend');
+      div.innerHTML = `<div><strong>Status legend</strong></div>`;
+      Object.entries(STATUS_COLORS).forEach(([label, clr]) => {
+        const item = document.createElement('div'); item.className = 'item';
+        item.innerHTML = `<span class="swatch" style="background:${clr}"></span>${label}`;
+        div.appendChild(item);
+      });
+      div.innerHTML += `<div class="attribution" style="margin-top:.5rem;">Basemap: © OpenStreetMap contributors</div>`;
       return div;
     };
     legend.addTo(map);
 
-    // --- 2) Read dataset.xlsx from the root ---------------------------------
-    // Expect columns exactly: City, State, Company Name, Category, Status,
-    // Year of Certification, PoC, GP Team (as in your file).
-    // We’ll parse the first sheet and build rows with those keys.
-    async function loadExcelRows() {
-      try {
-        const resp = await fetch('dataset.xlsx'); // same-origin fetch from root
-        const buf = await resp.arrayBuffer();
-        const wb = XLSX.read(buf, { type: 'array' });
-        const sheetName = wb.SheetNames[0];
-        const json = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
+    // --- Wire events ---
+    document.getElementById('toggleChoropleth').addEventListener('change', (e) => renderChoropleth(e.target.checked));
+    statusFilterEl.addEventListener('change', renderMarkers);
+    categoryFilterEl.addEventListener('change', renderMarkers);
+    document.getElementById('search').addEventListener('input', renderMarkers);
 
-        // Normalize and keep only rows with a city or company
-        const rows = json.map(r => ({
-          city:      norm(r['City']),
-          state:     norm(r['State']),
-          company:   norm(r['Company Name']),
-          category:  norm(r['Category']),
-          status:    norm(r['Status']),
-          year:      norm(r['Year of Certification']),
-          poc:       norm(r['PoC']),
-          gp_team:   norm(r['GP Team'])
-        })).filter(r => r.city || r.company);
-
-        return rows;
-      } catch (e) {
-        console.error('Failed to read dataset.xlsx', e);
-        alert('Could not read dataset.xlsx. Make sure it is at the repository root.');
-        return [];
-      }
-    }
-
-    // --- 3) Group by city/state (one marker per city) ------------------------
-    function groupByCity(rows) {
-      const groups = new Map();
-      for (const r of rows) {
-        const city = norm(r.city);
-        const state = norm(r.state);
-        const key = state ? `${city}, ${state}` : city;
-        if (!key) continue;
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(r);
-      }
-      return groups;
-    }
-
-    // --- 4) Geocoding via Nominatim (1 req/sec; cache in localStorage) -------
-    // Public Nominatim: max 1 request/sec; include a unique UA if you self-host.
-    // (We rate-limit in the client; results cached locally.) [2](https://awareseven.github.io/OSINTsources/)
-    const CACHE_KEY = 'greenMapCityCacheV1';
-    const cityCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-    const saveCache = () => localStorage.setItem(CACHE_KEY, JSON.stringify(cityCache));
-    const queue = [];
-
-    function enqueueCity(q) { if (!queue.includes(q)) queue.push(q); }
-    async function geocodeCity(query) {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
-      try {
-        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-        const json = await r.json();
-        if (Array.isArray(json) && json.length) {
-          const { lat, lon, display_name } = json[0];
-          cityCache[query] = { lat: +lat, lon: +lon, name: display_name };
-          saveCache();
-          return cityCache[query];
-        }
-        cityCache[query] = null; saveCache(); return null;
-      } catch {
-        return null;
-      }
-    }
-
-    function renderCity(query, coords, list) {
-      if (!coords) return;
-      const items = list.map(item => {
-        const name = item.company || '—';
-        const cat  = item.category || '—';
-        const stat = statusBadge(item.status);
-        const year = item.year || '—';
-        const poc  = item.poc || '—';
-        const team = item.gp_team || '—';
-        return `<li><strong>${name}</strong><br/><small>${cat}</small><br/>${stat}<br/><small>Year: ${year} | PoC: ${poc} | Team: ${team}</small></li>`;
-      }).join('');
-      const popupHtml = `<div><h3 style="margin:0 0 8px 0">${query}</h3><ol style="padding-left:18px">${items}</ol></div>`;
-      L.marker([coords.lat, coords.lon]).addTo(map).bindPopup(popupHtml);
-    }
-
-    // --- 5) Main: load, group, geocode, render -------------------------------
-    (async () => {
-      console.log('Green Map: loading dataset.xlsx …');
-      const rows = await loadExcelRows();
-      const groups = groupByCity(rows);
-
-      // Fit to all markers once we have some coords
-      const bounds = L.latLngBounds([]);
-
-      for (const [query, list] of groups.entries()) {
-        const cached = cityCache[query];
-        if (cached && typeof cached.lat === 'number') {
-          renderCity(query, cached, list);
-          bounds.extend([cached.lat, cached.lon]);
-        } else {
-          enqueueCity(query);
-        }
-      }
-
-      // Process geocoding queue at ~1 req/sec (policy-friendly)
-      const timer = setInterval(async () => {
-        if (!queue.length) { clearInterval(timer); if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24] }); return; }
-        const q = queue.shift();
-        const res = await geocodeCity(q);
-        if (res) {
-          renderCity(q, res, groups.get(q) || []);
-          bounds.extend([res.lat, res.lon]);
-        }
-      }, 1100);
+    // --- Init sequence ---
+    (async function init() {
+      await tryLoadCitiesIndex(); // load coords or fallback
+      renderMarkers();
     })();
   </script>
 </body>
