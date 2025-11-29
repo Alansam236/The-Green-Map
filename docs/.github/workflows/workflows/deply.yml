@@ -1,0 +1,60 @@
+
+name: Build site (Excel -> docs/data.js) for GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'dataset.xlsx'
+      - 'data.template.js'
+      - 'docs/index.html'
+      - 'docs/assets/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install SheetJS (xlsx)
+        run: npm install xlsx@0.18.5
+
+      - name: Build docs/data.js from dataset.xlsx + template
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const XLSX = require('xlsx');
+
+          // Ensure docs folder exists
+          if (!fs.existsSync('docs')) fs.mkdirSync('docs');
+
+          // Read Excel from repo root (NOT served by Pages)
+          const wb = XLSX.readFile('dataset.xlsx');
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+          // Read template (colors + geo cache)
+          const template = fs.readFileSync('data.template.js', 'utf8');
+
+          // Append DATA_ROWS to produce docs/data.js
+          const out = template + '\n\nconst DATA_ROWS = ' + JSON.stringify(rows, null, 2) + ';\n';
+          fs.writeFileSync('docs/data.js', out, 'utf8');
+          console.log('Built docs/data.js with', rows.length, 'rows');
+          EOF
+
+      - name: Commit docs/data.js (and any asset changes)
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/data.js docs/assets docs/index.html
+          git commit -m "Auto-build docs/data.js from dataset.xlsx" || echo "No changes"
+          git push
