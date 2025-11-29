@@ -21,16 +21,26 @@ jobs:
         run: |
           mkdir -p docs/assets/leaflet/images
 
-      - name: Download Leaflet 1.9.4 (CSS/JS + images)
+      - name: Download Leaflet 1.9.4 (CSS/JS + images) with fallback
         run: |
-          # CSS & JS
-          curl -L -o docs/assets/leaflet/leaflet.css https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css
-          curl -L -o docs/assets/leaflet/leaflet.js  https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js
+          set -e
+          fetch() { curl -L --fail --retry 3 --retry-delay 2 -o "$1" "$2"; }
 
-          # Images referenced by leaflet.css (must be next to CSS in /images)
-          curl -L -o docs/assets/leaflet/images/marker-icon.png    https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png
-          curl -L -o docs/assets/leaflet/images/marker-icon-2x.png https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon-2x.png
-          curl -L -o docs/assets/leaflet/images/marker-shadow.png  https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-shadow.png
+          # Primary: jsDelivr
+          fetch docs/assets/leaflet/leaflet.css https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css || \
+          fetch docs/assets/leaflet/leaflet.css https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
+
+          fetch docs/assets/leaflet/leaflet.js  https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js  || \
+          fetch docs/assets/leaflet/leaflet.js  https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
+
+          fetch docs/assets/leaflet/images/marker-icon.png    https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png    || \
+          fetch docs/assets/leaflet/images/marker-icon.png    https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png
+
+          fetch docs/assets/leaflet/images/marker-icon-2x.png https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon-2x.png || \
+          fetch docs/assets/leaflet/images/marker-icon-2x.png https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png
+
+          fetch docs/assets/leaflet/images/marker-shadow.png  https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-shadow.png  || \
+          fetch docs/assets/leaflet/images/marker-shadow.png  https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png
 
       - name: Commit vendored Leaflet files
         run: |
