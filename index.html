@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>India Supplier Map</title>
+  <title>India Supplier Map (Excel-driven)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <!-- Leaflet CSS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-   margin: 0; }
+  https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
+  <!-- SheetJS (xlsx) -->
+  https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js</script>
+  <style>
+    html, body { height: 100%; margin: 0; }
     #toolbar {
       display: grid; gap: .5rem; grid-template-columns: repeat(4, minmax(160px, 1fr));
       padding: .75rem; border-bottom: 1px solid #eee; font-family: system-ui, sans-serif;
@@ -26,15 +27,11 @@
   <div id="toolbar">
     <div>
       <label for="statusFilter"><strong>Status</strong></label><br />
-      <select id="statusFilter">
-        <option value="">All</option>
-      </select>
+      <select id="statusFilter"><option value="">All</option></select>
     </div>
     <div>
       <label for="categoryFilter"><strong>Category</strong></label><br />
-      <select id="categoryFilter">
-        <option value="">All</option>
-      </select>
+      <select id="categoryFilter"><option value="">All</option></select>
     </div>
     <div>
       <label for="search"><strong>Search company</strong></label><br />
@@ -51,104 +48,93 @@
   <!-- Leaflet JS -->
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    data and template config -->
-  ./data.js</script>
+   late config (status colors, geo URLs, fallback coords) -->
   ./data.template.js</script>
+  <!-- Optional stub (not required, but you asked for it) -->
+  ./data.js</script>
 
   <script>
-    // --- Map setup ---
-    const map = L.map('map', {
-      center: [22.9, 78.8], // India center-ish
-      zoom: 5,
-    });
+    // ---------------- Leaflet base map ----------------
+    const map = L.map('map', { center: [22.9, 78.8], zoom: 5 });
 
-    // OSM base tiles with required attribution
+    // OpenStreetMap standard tiles (with proper attribution)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18,
       attribution: '&copy; https://www.openstreetmap.org/copyrightOpenStreetMap</a> contributors',
-    }).addTo(map);
+    }).addTo(map); // OSM tiles + attribution are required by ODbL guidelines. [3](https://leafletjs.com/examples/quick-start/)[4](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines)
 
-    // --- Color palette for statuses from template ---
-    const STATUS_COLORS = (window.STATUS_COLORS || {
-      'Completed': '#2e7d32',
-      'Working on Documentation': '#1e88e5',
-      'Inactive': '#757575',
-      'Hold': '#ef6c00',
-      'To be updated': '#8e24aa',
-      'Certification Payment Pending': '#c62828',
-      'Intro Session Pending': '#6d4c41',
-      'Data Received': '#3949ab',
-      'Waiting for CTO, on-hold': '#bdbdbd',
-      'Unknown': '#9e9e9e'
-    });
+    // ---------------- Config from template ----------------
+    const STATUS_COLORS = window.STATUS_COLORS || { 'Unknown': '#9e9e9e' };
+    const GEO_SOURCES = window.GEO_SOURCES || {};
+    const CITY_FALLBACK = window.CITY_COORDS || {}; // { "City": [lat, lon, state] }
 
-    // Helper to color by status
-    function statusColor(s) {
-      return STATUS_COLORS[s] || STATUS_COLORS['Unknown'] || '#888';
-    }
+    // ---------------- City index (lat/lon + state) ----------------
+    const norm = s => (s || '').toLowerCase().replace(/\s+/g, '');
 
-    // Normalize for matching against city lookup
-    const normalize = (s) => (s || '').toLowerCase().replace(/\s+/g, '');
-
-    // --- Optional: load cities lookup (lat/lon + state) ---
-    // Put the file from Simplemaps (MIT-licensed subset) as /assets/in-cities.json in your repo.
-    // Fallback to CITY_COORDS from data.template.js if not present.
-    let cityIndex = new Map();
+    const cityIndex = new Map();
     let cityIndexReady = false;
 
-    async function tryLoadCitiesIndex() {
+    async function loadCityIndex() {
       try {
-        const resp = await fetch('./assets/in-cities.json'); // add this file to your repo
-        if (!resp.ok) throw new Error('cities file missing');
-        const cities = await resp.json(); // expect { "cities": [ {city, lat, lng, admin_name}, ... ] } or array
-        const arr = Array.isArray(cities) ? cities : (cities.cities || []);
-        arr.forEach(c => {
-          const key = normalize(c.city);
-          cityIndex.set(key, { lat: +c.lat, lon: +c.lng, state: c.admin_name });
+        const r = await fetch('./assets/in-cities.json'); // recommended file (MIT subset from Simplemaps)
+        if (!r.ok) throw new Error('missing in-cities.json');
+        const payload = await r.json();
+        const list = Array.isArray(payload) ? payload : (payload.cities || []);
+        list.forEach(c => {
+          cityIndex.set(norm(c.city), { lat: +c.lat, lon: +c.lng, state: c.admin_name });
         });
         cityIndexReady = true;
       } catch (e) {
-        console.warn('City index not found; will use CITY_COORDS fallback.', e);
-        // Load from CITY_COORDS (defined in data.template.js)
-        const cc = window.CITY_COORDS || {};
-        Object.keys(cc).forEach(k => {
-          const key = normalize(k);
-          cityIndex.set(key, { lat: +cc[k][0], lon: +cc[k][1], state: cc[k][2] || null });
+        console.warn('City index not found. Using fallback CITY_COORDS.', e);
+        Object.entries(CITY_FALLBACK).forEach(([city, arr]) => {
+          cityIndex.set(norm(city), { lat: +arr[0], lon: +arr[1], state: arr[2] || null });
         });
         cityIndexReady = cityIndex.size > 0;
       }
     }
 
-    // Resolve lat/lon for a city string
-    function resolveCity(cityName) {
-      const hit = cityIndex.get(normalize(cityName));
-      return hit || null;
+    function resolveCity(name) { return cityIndex.get(norm(name)); }
+
+    // ---------------- Read Excel directly (SheetJS) ----------------
+    // We fetch dataset.xlsx from the same repo and parse the first sheet.
+    async function loadExcelRows() {
+      const resp = await fetch('./dataset.xlsx'); // Pages serves static files; fetch as ArrayBuffer
+      if (!resp.ok) throw new Error('Failed to fetch dataset.xlsx');
+      const buf = await resp.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' }); // parse workbook bytes in-browser. [1](https://docs.sheetjs.com/docs/getting-started/examples/import/)[2](https://docs.sheetjs.com/docs/solutions/input/)
+      const firstSheetName = wb.SheetNames[0];
+      const sheet = wb.Sheets[firstSheetName];
+      // Expect headers matching: City, Company Name, Category, Status, PoC, GP Team
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: true });
+      return rows.map(r => ({
+        city: r['City'] ?? null,
+        company: r['Company Name'] ?? null,
+        category: r['Category'] ?? null,
+        status: r['Status'] ?? null,
+        poc: r['PoC'] ?? null,
+        gp_team: r['GP Team'] ?? null
+      }));
     }
 
-    // --- Build filters ---
-    const statusSet = new Set(), categorySet = new Set();
-    (window.DATA_ROWS || []).forEach(r => {
-      if (r.status) statusSet.add(r.status);
-      if (r.category) categorySet.add(r.category);
-    });
+    // ---------------- UI + layers ----------------
     const statusFilterEl = document.getElementById('statusFilter');
     const categoryFilterEl = document.getElementById('categoryFilter');
-    for (const s of Array.from(statusSet).sort()) {
-      const opt = document.createElement('option'); opt.value = s; opt.textContent = s; statusFilterEl.appendChild(opt);
-    }
-    for (const c of Array.from(categorySet).sort()) {
-      const opt = document.createElement('option'); opt.value = c; opt.textContent = c; categoryFilterEl.appendChild(opt);
-    }
+    const searchEl = document.getElementById('search');
+    const toggleChoroplethEl = document.getElementById('toggleChoropleth');
 
-    // --- Layers ---
     const markersLayer = L.layerGroup().addTo(map);
     let choroplethLayer = null;
+
+    function statusColor(s) { return STATUS_COLORS[s] || STATUS_COLORS['Unknown'] || '#888'; }
 
     function companyPopup(r, coord) {
       return `
         <div style="min-width:220px">
           <div><strong>${r.company || '—'}</strong></div>
-          <div><span class="pill">${r.category || '—'}</span> <span class="pill" style="background:${statusColor(r.status)};color:white;">${r.status || 'Unknown'}</span></div>
+          <div>
+            <span class="pill">${r.category || '—'}</span>
+            <span class="pill" style="background:${statusColor(r.status)};color:white;">${r.status || 'Unknown'}</span>
+          </div>
           <div>${r.city || ''}${coord?.state ? ', ' + coord.state : ''}</div>
           ${r.poc ? `<div>PoC: ${r.poc}</div>` : '' }
           ${r.gp_team ? `<div>GP Team: ${r.gp_team}</div>` : '' }
@@ -156,15 +142,25 @@
       `;
     }
 
-    function renderMarkers() {
+    function populateFilters(rows) {
+      const statuses = new Set(), categories = new Set();
+      rows.forEach(r => { if (r.status) statuses.add(r.status); if (r.category) categories.add(r.category); });
+      Array.from(statuses).sort().forEach(s => {
+        const opt = document.createElement('option'); opt.value = s; opt.textContent = s; statusFilterEl.appendChild(opt);
+      });
+      Array.from(categories).sort().forEach(c => {
+        const opt = document.createElement('option'); opt.value = c; opt.textContent = c; categoryFilterEl.appendChild(opt);
+      });
+    }
+
+    function renderMarkers(rows) {
       markersLayer.clearLayers();
       const statusFilter = statusFilterEl.value;
       const categoryFilter = categoryFilterEl.value;
-      const q = document.getElementById('search').value.trim().toLowerCase();
+      const q = searchEl.value.trim().toLowerCase();
 
       let missing = 0, plotted = 0;
-
-      (window.DATA_ROWS || []).forEach(r => {
+      rows.forEach(r => {
         if (statusFilter && r.status !== statusFilter) return;
         if (categoryFilter && r.category !== categoryFilter) return;
         if (q && !(r.company || '').toLowerCase().includes(q)) return;
@@ -173,11 +169,8 @@
         if (!coord) { missing++; return; }
 
         const m = L.circleMarker([coord.lat, coord.lon], {
-          radius: 6,
-          color: statusColor(r.status),
-          fillColor: statusColor(r.status),
-          fillOpacity: 0.85,
-          weight: 1
+          radius: 6, color: statusColor(r.status),
+          fillColor: statusColor(r.status), fillOpacity: 0.85, weight: 1
         }).bindPopup(companyPopup(r, coord));
         markersLayer.addLayer(m);
         plotted++;
@@ -186,64 +179,45 @@
       console.info(`Plotted: ${plotted}, missing coords: ${missing}`);
     }
 
-    // --- Choropleth (state counts) ---
-    async function renderChoropleth(toggleOn) {
+    async function renderChoropleth(rows, toggleOn) {
       if (choroplethLayer) { map.removeLayer(choroplethLayer); choroplethLayer = null; }
       if (!toggleOn) return;
+      if (!cityIndexReady) { console.warn('No city index; choropleth needs states.'); return; }
 
-      // Need states geojson and city->state resolution
-      if (!cityIndexReady) {
-        console.warn('No city index; choropleth needs state names.');
-        return;
-      }
+      const url = (GEO_SOURCES && GEO_SOURCES.INDIA_STATES_GEOJSON_URL)
+        || 'https://raw.githubusercontent.com/india-in-data/india_maps/master/india_state_ut_administered.geojson';
+      const gj = await fetch(url).then(r => r.json()); // public India states GeoJSON. [5](https://github.com/india-in-data/india_maps)
 
-      // Fetch India states GeoJSON (you can replace URL in data.template.js)
-      const url = (window.GEO_SOURCES && window.GEO_SOURCES.INDIA_STATES_GEOJSON_URL)
-                  || 'https://raw.githubusercontent.com/india-in-data/india_maps/master/india_state_ut_administered.geojson';
-      const gj = await fetch(url).then(r => r.json());
-
-      // Build state counts
       const counts = new Map();
-      (window.DATA_ROWS || []).forEach(r => {
-        const coord = resolveCity(r.city);
-        const state = coord?.state;
-        if (!state) return;
-        counts.set(state, (counts.get(state) || 0) + 1);
+      rows.forEach(r => {
+        const st = resolveCity(r.city)?.state;
+        if (!st) return;
+        counts.set(st, (counts.get(st) || 0) + 1);
       });
 
-      function getCountFor(feature) {
-        const name = feature.properties?.name || feature.properties?.st_nm || feature.properties?.NAME_1;
+      const nrm = s => (s || '').toLowerCase();
+      const getCount = f => {
+        const name = f.properties?.name || f.properties?.st_nm || f.properties?.NAME_1;
         if (!name) return 0;
-        // try exact and loose match
         const exact = counts.get(name); if (exact) return exact;
-        // Loose normalize
-        const found = Array.from(counts.entries()).find(([k]) => normalize(k) === normalize(name));
+        const lo = nrm(name);
+        const found = Array.from(counts.entries()).find(([k]) => nrm(k) === lo);
         return found ? found[1] : 0;
-      }
+      };
 
-      function fillFor(count) {
-        // simple ramp
-        if (count === 0) return '#efefef';
-        if (count < 2) return '#c5e1a5';
-        if (count < 5) return '#81c784';
-        if (count < 10) return '#4caf50';
-        return '#2e7d32';
-      }
+      const ramp = c => c === 0 ? '#efefef' : c < 2 ? '#c5e1a5' : c < 5 ? '#81c784' : c < 10 ? '#4caf50' : '#2e7d32';
 
       choroplethLayer = L.geoJSON(gj, {
-        style: f => {
-          const c = getCountFor(f);
-          return { weight: 1, color: '#666', fillColor: fillFor(c), fillOpacity: .6 };
-        },
-        onEachFeature: (feature, layer) => {
-          const name = feature.properties?.name || feature.properties?.st_nm || feature.properties?.NAME_1 || 'State';
-          const c = getCountFor(feature);
-          layer.bindPopup(`<strong>${name}</strong><br/>Companies: ${c}`);
+        style: f => { const c = getCount(f); return { weight: 1, color: '#666', fillColor: ramp(c), fillOpacity: .6 }; },
+        onEachFeature: (f, layer) => {
+          const nm = f.properties?.name || f.properties?.st_nm || f.properties?.NAME_1 || 'State';
+          const c = getCount(f);
+          layer.bindPopup(`<strong>${nm}</strong><br/>Companies: ${c}`);
         }
       }).addTo(map);
     }
 
-    // --- Legend ---
+    // Legend
     const legend = L.control({position: 'bottomright'});
     legend.onAdd = function() {
       const div = L.DomUtil.create('div', 'legend');
@@ -258,16 +232,22 @@
     };
     legend.addTo(map);
 
-    // --- Wire events ---
-    document.getElementById('toggleChoropleth').addEventListener('change', (e) => renderChoropleth(e.target.checked));
-    statusFilterEl.addEventListener('change', renderMarkers);
-    categoryFilterEl.addEventListener('change', renderMarkers);
-    document.getElementById('search').addEventListener('input', renderMarkers);
+    // Wire events
+    toggleChoroplethEl.addEventListener('change', async e => {
+      const rows = window.__DATA_ROWS_CACHE || [];
+      await renderChoropleth(rows, e.target.checked);
+    });
+    statusFilterEl.addEventListener('change', () => renderMarkers(window.__DATA_ROWS_CACHE || []));
+    categoryFilterEl.addEventListener('change', () => renderMarkers(window.__DATA_ROWS_CACHE || []));
+    searchEl.addEventListener('input', () => renderMarkers(window.__DATA_ROWS_CACHE || []));
 
-    // --- Init sequence ---
+    // Init
     (async function init() {
-      await tryLoadCitiesIndex(); // load coords or fallback
-      renderMarkers();
+      await loadCityIndex(); // load coords
+      const rows = await loadExcelRows(); // parse Excel in browser via SheetJS. [1](https://docs.sheetjs.com/docs/getting-started/examples/import/)
+      window.__DATA_ROWS_CACHE = rows;
+      populateFilters(rows);
+      renderMarkers(rows);
     })();
   </script>
 </body>
